@@ -54,7 +54,7 @@ assets/           # 仅在增强轨道启用时创建
 
 已有仓库优先遵循现有结构。Task 1 必须为 `SKILL_FILE`、`README_FILE`、`BRIEF_FILE`、`DECISIONS_FILE`、`DELIVERY_FILE`、`EVALS_FILE`、`TEST_ROOT`、`SOURCE_ROOT`、`RESOURCES_ROOT` 和 `EVAL_WORKSPACE` 写入实际路径映射。
 
-后续命令块展示全新仓库的默认路径。已有仓库在执行每个命令前，必须根据路径映射替换对应参数，并把本次实际命令写入工作记录；不得为了照抄示例在仓库中创建第二套 `docs`、`evals`、`tests`、`src` 或 `resources`。
+后续命令块展示全新仓库的默认路径。已有仓库在执行每个命令前，必须根据路径映射替换对应参数，并把本次实际命令写入工作记录；不得为了照抄示例在仓库中创建第二套 `docs/`、`evals/`、`tests/`、`src/` 或 `resources/`。
 
 ### 增强轨道状态
 
@@ -62,9 +62,9 @@ Skill Brief 必须维护以下状态，值只能是 `enabled`、`disabled` 或 `
 
 | 轨道 | 默认状态 | 启用条件 |
 | --- | --- | --- |
-| `references` | `disabled` | 主 Skill 过长、存在多领域变体或需要大段权威资料 |
-| `scripts` | `disabled` | 多个评测重复生成同类确定性逻辑，或任务需要机械校验 |
-| `assets` | `disabled` | 输出必须依赖模板、字体、图标或固定素材 |
+| references | `disabled` | 主 Skill 过长、存在多领域变体或需要大段权威资料 |
+| scripts | `disabled` | 多个评测重复生成同类确定性逻辑，或任务需要机械校验 |
+| assets | `disabled` | 输出必须依赖模板、字体、图标或固定素材 |
 | `implicit-trigger` | `disabled` | 用户要求未显式提及 Skill 时也稳定触发，且 description 不足以保证 |
 | `multi-agent` | `disabled` | 用户明确要求多个 Agent 正式兼容 |
 | `installer` | `disabled` | 需要写入多个 Skill 目录、用户规则或共享配置 |
@@ -186,7 +186,7 @@ git commit -m "docs: define skill requirements"
 
 **Files:**
 - Create: `evals/evals.json`
-- Create: `tests/behavior-eval-output.schema.json` when structured grading is applicable
+- Create: `tests/<behavior-eval-output>.schema.json` when structured grading is applicable
 - Modify: `docs/skill-brief.md`
 
 **Interfaces:**
@@ -243,7 +243,7 @@ node -e "const fs=require('node:fs'); const x=JSON.parse(fs.readFileSync('evals/
 git add evals docs/skill-brief.md
 ```
 
-存在结构化 Schema 时，在提交前另行运行 `git add tests/behavior-eval-output.schema.json`；否则不创建对应文件。
+存在结构化 Schema 时，在提交前另行运行 `git add tests/<behavior-eval-output>.schema.json`；否则不创建对应文件。
 
 ```bash
 git commit -m "test: define skill behavior contract"
@@ -378,7 +378,7 @@ git commit -m "feat: define skill workflow"
 
 - [ ] **Step 1: 执行资源启用判定**
 
-满足任一条件时启用 `references`：主 Skill 接近 500 行；多个框架或领域拥有不同规则；大段规范只在少数任务中需要。输出必须依赖模板或素材时启用 `assets`。否则保持禁用并记录“主 Skill 足以覆盖核心流程”或实际理由。
+满足任一条件时启用“references”轨道：主 Skill 接近 500 行；多个框架或领域拥有不同规则；大段规范只在少数任务中需要。输出必须依赖模板或素材时启用“assets”轨道。否则保持禁用并记录“主 Skill 足以覆盖核心流程”或实际理由。
 
 - [ ] **Step 2: 按变体拆分 references**
 
@@ -636,7 +636,7 @@ git commit -m "docs: add skill usage and maintenance guide"
 
 只有以下情况启用：至少两个独立案例重复实现相同辅助逻辑；任务需要精确解析、转换、渲染或验证；脚本能明显减少 Token、错误或重复代码。单次方便性不足以启用。
 
-没有满足条件时，将 `scripts` 保持为 `disabled`，写入证据“核心工作流未出现重复确定性实现”，并跳过本任务其余步骤。
+没有满足条件时，将“scripts”轨道保持为 `disabled`，写入证据“核心工作流未出现重复确定性实现”，并跳过本任务其余步骤。
 
 - [ ] **Step 2: 先定义脚本接口测试**
 

@@ -9,6 +9,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TRACKED_PATHS = new Set(
   execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean),
 );
+const TRACKED_ROOTS = new Set([...TRACKED_PATHS].map((target) => target.split('/')[0]));
+const TRACKED_DIRECTORIES = new Set();
+for (const target of TRACKED_PATHS) {
+  const segments = target.split('/');
+  for (let depth = 1; depth < segments.length; depth += 1) {
+    TRACKED_DIRECTORIES.add(`${segments.slice(0, depth).join('/')}/`);
+  }
+}
 const TRACKED_MARKDOWN = [...TRACKED_PATHS].filter((target) => target.endsWith('.md')).sort();
 const DOCUMENTS = [
   'AGENTS.md',
@@ -46,7 +54,7 @@ function concreteReference(value) {
     || /[<>{}*|]/u.test(decoded)) {
     return null;
   }
-  return decoded.replace(/#.*$/u, '').replace(/:[0-9]+(?:-[0-9]+)?$/u, '');
+  return decoded.replace(/#.*$/u, '').replace(/:[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*$/u, '');
 }
 
 function repositoryReferences(target, source) {
@@ -59,9 +67,18 @@ function repositoryReferences(target, source) {
   }
   for (const match of source.matchAll(/`([^`\r\n]+)`/gu)) {
     const linked = concreteReference(match[1]);
-    if (linked !== null && /^(?:\.\.?\/|\.superpowers\/sdd\/)/u.test(linked)
-      && /\.[a-z0-9]+$/iu.test(linked)) {
-      references.push({ value: linked, relativeToDocument: false });
+    if (linked === null) {
+      continue;
+    }
+    const normalized = linked.replaceAll('\\', '/');
+    const dotRelative = /^\.\.?\//u.test(normalized);
+    // 只豁免由 tracked file parents 证明的概念目录；dot-relative 与其他候选继续执行越界和精确 membership。
+    if (!dotRelative && TRACKED_DIRECTORIES.has(normalized)) {
+      continue;
+    }
+    const repositoryRoot = normalized.split('/')[0];
+    if (dotRelative || TRACKED_ROOTS.has(repositoryRoot)) {
+      references.push({ value: normalized, relativeToDocument: false });
     }
   }
   const evidenceMatches = [
@@ -78,9 +95,11 @@ function repositoryReferences(target, source) {
     // Markdown 链接相对当前文档；反引号路径与 Evidence Contract 路径相对仓库根。
     const base = relativeToDocument ? path.dirname(path.join(ROOT, target)) : ROOT;
     const absolute = path.resolve(base, value);
+    const relative = path.relative(ROOT, absolute).split(path.sep).join('/');
     return {
       value,
-      relative: path.relative(ROOT, absolute).split(path.sep).join('/'),
+      // 非概念目录的尾斜杠必须保留到 exact membership，不能被 path.resolve 折叠成已跟踪文件。
+      relative: value.endsWith('/') ? `${relative}/` : relative,
     };
   });
 }
@@ -286,15 +305,31 @@ test('公开 Markdown 引用检查拒绝目录、越界和 ignored 文件且忽�
     return result;
   };
   try {
+    const mistakenlyAccepted = [];
     for (const invalid of [
       '[pathspec directory](docs)',
       '[outside prefix](../README.md)',
+      '`../`',
+      '`../../`',
       '`.superpowers/sdd/2026-08-21-development-execution-accelerator-hardening/task-12-local-install-report.md`',
+      '`evals/not-tracked.json`',
+      '`evals/not-tracked.json#section`',
+      '`evals/fixtures`',
+      '`src`',
+      '`docs`',
+      '`src/not-tracked.js`',
+      '`src/not-tracked.js/`',
+      '`src/lean-evaluation.js/`',
+      '`src/not-tracked.js:12`',
+      '`tests/not-tracked.test.js`',
     ]) {
       const result = runReferenceCheck(invalid);
-      assert.notEqual(result.status, 0, result.output);
+      if (result.status === 0) {
+        mistakenlyAccepted.push(invalid);
+      }
     }
-    const allowed = runReferenceCheck('[external](https://example.com/x) [anchor](#section) `artifact:<path>#sha256:<digest>`');
+    assert.deepEqual(mistakenlyAccepted, [], `错误放行: ${mistakenlyAccepted.join(', ')}`);
+    const allowed = runReferenceCheck('[external](https://example.com/x) [anchor](#section) `scripts/` `LICENSE` `src\\lean-evaluation.js` `evals/formal-plan.json` `tests/<behavior-eval-output>.schema.json` `artifact:<path>#sha256:<digest>`');
     assert.equal(allowed.status, 0, allowed.output);
   } finally {
     writeFileSync(readmePath, original);

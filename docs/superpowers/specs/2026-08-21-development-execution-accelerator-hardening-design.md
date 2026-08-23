@@ -128,7 +128,7 @@ Skill 被显式调用或元数据无法完全判断时，先用已有上下文�
 
 Prompt 的硬上限仍为 2500 tokens，成熟交付的保守目标为不超过 2250 tokens，留下至少 250 tokens 的维护余量。不得通过删除安全边界、验证下界、职责边界或真实报告要求换取预算。
 
-`references`、`scripts` 和 `assets` 轨道默认继续 `disabled`；只有独立证据证明它们能降低时间或错误且不会增加运行时耦合时，才另行启用。
+“references”、“scripts”和“assets”轨道默认继续 `disabled`；只有独立证据证明它们能降低时间或错误且不会增加运行时耦合时，才另行启用。
 
 ## Delivery Gate 与证据契约强化
 
