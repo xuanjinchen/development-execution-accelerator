@@ -1,0 +1,22 @@
+# EVAL-008 — Background wait overlap
+
+Date: 2026-08-20
+Outcome: FAIL (ASSERT-001 failed in 3/3 attempts)
+Target Skill commit: `72a553bc446906717be14773c78566f3c961f411`
+Target Skill SHA-256: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+Controller evaluator: `gpt-5.6-terra` at `medium` reasoning effort; total tokens were unavailable/null and are not represented as zero.
+
+## Evidence and preserved failed attempts
+
+- Workspace: `../development-execution-accelerator-workspace/final-fix-72a553b/EVAL-008-wait-overlap/`
+- Failed with-Skill attempts: `run-1`, `run-2`, and `run-3`; their raw telemetry, timing, diffs, Git states, and final responses are preserved in each run's `evidence/` directory.
+
+All three attempts implemented the approved alpha change, wrote the exact approved note, and passed the targeted and required aggregate commands once. None satisfies ASSERT-001 because the note was created after the targeted test ended:
+
+| Attempt | Targeted test ended | Note created | Disposition |
+| --- | --- | --- | --- |
+| run-1 | `2026-08-20T07:20:32.106Z` | `2026-08-20T07:20:35.2868254Z` | no overlap |
+| run-2 | `2026-08-20T07:24:26.896Z` | `2026-08-20T07:24:38.0926754Z` | no overlap |
+| run-3 | `2026-08-20T07:30:10.895Z` | `2026-08-20T07:31:11.2675655Z` | no overlap |
+
+Because the frozen overlap assertion failed in all three attempts, this evaluation is recorded as failed. The failed attempts are not rerun, discarded, or converted into manufactured overlap. Passing ASSERT-002 and ASSERT-003 cannot compensate for failed ASSERT-001. This leaves background wait-overlap capability, REQ-004, REQ-006, and the `multi-agent` track unresolved.

@@ -1,0 +1,21 @@
+# EVAL-006 — Read-only explanation boundary
+
+Date: 2026-08-20
+Outcome: PASS (2/2 assertions)
+Skill commit evaluated: `72a553bc446906717be14773c78566f3c961f411`
+Skill SHA-256 evaluated: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+Controller evaluator: `gpt-5.6-terra` at `medium` reasoning effort; total tokens were unavailable/null and are not represented as zero.
+
+## Evidence and accepted run
+
+- Workspace: `../development-execution-accelerator-workspace/final-fix-72a553b/EVAL-006-read-only-explanation/run-1/`
+- Primary objective evidence: `evidence/activity.md`, `evidence/dispatch-metadata.json`, `evidence/final-response.md`, `evidence/diff.patch`, `evidence/git-before.txt`, and `evidence/git-after.txt`.
+
+The response accurately explains that `normalizeBeta` converts with `Number`, returns 0 for a non-finite conversion, and otherwise truncates toward zero and clamps to a minimum of 0. The activity and dispatch records contain no project command, file write, execution state, worker, background command, wait, plan-state operation, or acceleration-capability probe. Pre/post Git state and diff are clean.
+
+Objective disposition:
+
+1. ASSERT-001 passes: the response remains a read-only explanation and does not start the execution workflow.
+2. ASSERT-002 passes: no repository file changes.
+
+Disclosure: the subject unnecessarily read the fixture's `test/beta.test.js` in addition to source context. It did not read repository evaluation assertions or evaluation results, and this extra fixture read does not violate either frozen assertion. Subject duration was 12.8973555s.

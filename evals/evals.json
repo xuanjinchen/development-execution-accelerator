@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "skill": "development-execution-accelerator",
+  "evals": [
+    {
+      "id": "EVAL-001",
+      "category": "positive",
+      "prompt": "Work in a copy of evals/fixtures/long-task. The upstream plan has approved two medium, dependency-free changes in disjoint conflict domains. Catalog owns only src/catalog/normalize-catalog.js: implement normalizeCatalog(records) with trimmed uppercase SKU validation, rejection of empty SKUs and non-positive quantities, lowercased deduplicated sorted tags, duplicate quantity merging, stable SKU sorting, and no input mutation; run npm run test:catalog. Billing owns only src/billing/allocate-invoice.js: implement allocateInvoice(totalCents, weights) with safe non-negative integer cents, positive finite weights, floor shares plus stable largest-remainder allocation, exact total, and no input mutation; run npm run test:billing. Keep one writer for each conflict domain and prevent concurrent writers from editing the same file. When both focused checks pass, run the required npm test aggregate gate exactly once for the final input identity. No architecture or scope decision remains. Report observed execution mode, commands, results, fallbacks, and limits.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "Both approved algorithms satisfy their focused behavioral tests without changing tests, verifier, package metadata, or unrelated files."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "The aggregate npm test gate runs exactly once after integration for the final input identity, and the report does not invent speedup."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-002",
+      "category": "negative",
+      "prompt": "We have not selected the event transport for a new billing subsystem. Compare Kafka and RabbitMQ, choose the architecture, split the project into implementation tasks, and do not modify repository files yet.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The accelerator does not take ownership of architecture selection or implementation scheduling before an upstream decision exists."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "No repository file or execution-state artifact is created by the accelerator."
+        }
+      ],
+      "result": {
+        "status": "pass",
+        "evidence": "artifact:evals/results/EVAL-002.txt#sha256:35989afcc1e4338b7afa170e40d3b47906d70da384189e3683d48be6e3ba74c4"
+      }
+    },
+    {
+      "id": "EVAL-003",
+      "category": "boundary",
+      "prompt": "Work in a copy of evals/fixtures/long-task with multi-agent disabled for this non-scoring fallback pilot. Complete the already-approved normalizeCatalog(records) and allocateInvoice(totalCents, weights) contracts through the foreground main Agent. Run npm run test:catalog, npm run test:billing, then the required npm test command without changing architecture, scope, tests, or the plan. Report only the observed foreground fallback and do not make a performance claim.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The work completes sequentially and does not claim unavailable capabilities."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "Both focused checks and the required full validation run in order without architecture or scope changes."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-004",
+      "category": "boundary",
+      "prompt": "Work in a copy of evals/fixtures/short-task. Fix the existing one-file value bug: doubleValue(value) in src/value.js must return twice a finite numeric input and throw TypeError for non-finite input. Run npm run test:value and the repository-required npm test command, then report the result. This is a short single-path change with no long validation or reusable-validation opportunity.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "When the Skill is explicitly loaded, its acceleration chain exits with zero worker, background, wait, or plan-state probes, no worker dispatch, and no persistent execution state."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "The main Agent completes the approved value-only fix normally and both required commands pass; this single subject has no baseline, no wall-clock threshold, and no performance claim."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-005",
+      "category": "boundary",
+      "prompt": "Work in a prepared copy of evals/fixtures/long-task whose billing implementation already passes. Execute this captured upstream contract: the approved task is to implement normalizeCatalog(records); it has no task dependency; its only allowed file and conflict domain is src/catalog/normalize-catalog.js; acceptance is fixed by test/catalog.test.js; and ordered required validation is npm run test:catalog followed by npm test. A current unrelated worktree change already exists in src/billing/allocate-invoice.js and must be preserved byte-for-byte. Do not run either required command twice for the same input identity or modify any other file.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "Both required commands run exactly once and pass in the required order."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "No identical validation command is repeated for the same input identity."
+        },
+        {
+          "id": "ASSERT-003",
+          "text": "Only the allowed src/catalog/normalize-catalog.js file boundary changes, and the current unrelated src/billing/allocate-invoice.js worktree change remains byte-identical."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-006",
+      "category": "negative",
+      "prompt": "In evals/fixtures/long-task, explain what normalizeCatalog currently does and identify its input and return value. Do not edit files, run project commands, create execution state, or propose a new architecture.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The response explains the current function without starting an execution ledger, worker, background command, or validation chain."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "No repository file changes."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-007",
+      "category": "boundary",
+      "prompt": "Continue in a prepared copy of evals/fixtures/long-task after normalizeCatalog implementation and npm run test:catalog already passed for the recorded input identity. Run npm run test:billing, diagnose its expected behavioral failure, fix only allocateInvoice in src/billing/allocate-invoice.js to satisfy the frozen safe-integer, positive-weight, stable-largest-remainder, exact-total, and no-mutation contract, rerun npm run test:billing, then run the required npm test gate. Preserve the still-valid catalog result and do not rerun npm run test:catalog before the full gate.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The failed billing branch is repaired and its targeted check is rerun."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "The valid catalog targeted result is preserved and not repeated before the required full gate."
+        },
+        {
+          "id": "ASSERT-003",
+          "text": "The required full test passes after the local repair."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-008",
+      "category": "positive",
+      "prompt": "Work in a copy of evals/fixtures/wait-overlap in an Agent environment that supports background commands and incremental waiting. Catalog and billing are frozen correct inputs. Start npm run verify:corpus as a background command. On return from the start call, confirm the session is running and immediately implement the independent reporting domain in src/reporting/format-summary.js, then run npm run test:reporting; reporting is independent and is not imported by or an input to the already-running corpus command. Do not poll, wait, organize evidence, or perform placeholder work before this approved implementation and focused test finish. Then issue one bounded wait for the corpus session. After the corpus succeeds, run the required npm test gate once. Do not edit catalog, billing, the corpus verifier, tests, or package metadata, and report only controller-observed overlap.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "Controller trace proves the reporting implementation and npm run test:reporting both occur strictly inside the real corpus command interval, after the background start returns and before the corpus ends."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "No poll, wait, evidence organization, placeholder write, or dependent work occurs before the approved reporting implementation and focused test; exactly one bounded wait follows them."
+        },
+        {
+          "id": "ASSERT-003",
+          "text": "The 96-record, 2400000-iteration SHA-256 corpus digest, focused reporting test, and aggregate gate pass, and only src/reporting/format-summary.js changes."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-009",
+      "category": "negative",
+      "prompt": "Perform a pure read-only code review of src/value.js in evals/fixtures/short-task. Report only actionable correctness or maintainability findings. Do not edit files, run project commands, start workers or background commands, probe acceleration capabilities, create execution state, or implement fixes.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The response stays a pure read-only code review and does not start the acceleration workflow or implementation."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "No repository file, execution state, project command, worker, background command, wait, plan-state action, or acceleration-capability probe occurs."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-010",
+      "category": "boundary",
+      "prompt": "Work in a copy of evals/fixtures/long-task and execute the already-approved catalog and billing fixes serially because the user explicitly requires no-parallel execution. Use the main Agent only; do not probe or use workers, background commands, waits, or plan state. Complete each frozen behavioral contract, run npm run test:catalog followed by npm run test:billing and the required npm test command, and report the result without changing architecture, scope, tests, or verifier.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The explicit serial or no-parallel request is respected with zero acceleration-capability probes, workers, background commands, waits, plan-state actions, or persistent execution state."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "Both approved domain changes are implemented sequentially without scope expansion."
+        },
+        {
+          "id": "ASSERT-003",
+          "text": "The targeted and required aggregate checks run serially in the requested order and pass."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    },
+    {
+      "id": "EVAL-011",
+      "category": "positive",
+      "prompt": "Work in a copy of evals/fixtures/long-task. The already-approved catalog and billing implementations are independent medium work in disjoint conflict domains, with their frozen focused checks followed by one required aggregate npm test gate. Complete both contracts without changing tests, verifier, package metadata, architecture, or scope. Do not explicitly load any Skill; report whether description-based selection occurred and only the execution mode actually observed.",
+      "assertions": [
+        {
+          "id": "ASSERT-001",
+          "text": "The accelerator is selected implicitly from its description for this substantive already-decided long execution task."
+        },
+        {
+          "id": "ASSERT-002",
+          "text": "The two approved domains complete within their one-writer boundaries, both focused checks pass, and the aggregate gate runs once after integration."
+        }
+      ],
+      "result": {
+        "status": "not-run",
+        "evidence": ""
+      }
+    }
+  ]
+}

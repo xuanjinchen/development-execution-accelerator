@@ -1,0 +1,11 @@
+{
+  "name": "accelerator-long-task-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:catalog": "node --test test/catalog.test.js",
+    "test:billing": "node --test test/billing.test.js",
+    "verify:corpus": "node scripts/verify-corpus.mjs",
+    "test": "node --test test/catalog.test.js test/billing.test.js test/integration.test.js"
+  }
+}

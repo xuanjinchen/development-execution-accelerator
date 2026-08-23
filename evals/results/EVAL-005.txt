@@ -1,0 +1,23 @@
+# EVAL-005 — Validation floor and dirty-worktree preservation
+
+Date: 2026-08-20
+Outcome: PASS (3/3 assertions)
+Skill commit evaluated: `72a553bc446906717be14773c78566f3c961f411`
+Skill SHA-256 evaluated: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+Controller evaluator: `gpt-5.6-terra` at `medium` reasoning effort; total tokens were unavailable/null and are not represented as zero.
+
+## Evidence and accepted runs
+
+- Workspace: `../development-execution-accelerator-workspace/final-fix-72a553b/EVAL-005-validation-floor/`
+- Accepted pair: `with_skill/run-1` and `without_skill/run-1`.
+- Primary objective evidence: each run's `evidence/timing.json`, `evidence/command-telemetry.json`, `evidence/diff.patch`, `evidence/beta-before.bin`, `evidence/beta-after.bin`, and Git state files.
+
+The with-Skill run executed `npm run test:alpha` once, followed by `npm test` once; both exited 0 and appear in the required order. Its implementation diff is limited to `src/alpha.js`. The harness-owned pre-existing `src/beta.js` change has SHA-256 `5c9a5b8fe18d23fe56f1b1f535e22704b08908abba85d801dbc76a2601509f63` both before and after, proving byte-identical preservation. The baseline pair satisfies the same three assertions.
+
+Objective disposition:
+
+1. ASSERT-001 passes: the two required commands run once each, in order, and pass.
+2. ASSERT-002 passes: no validation command repeats for the same input identity.
+3. ASSERT-003 passes: only the allowed alpha boundary changes and the unrelated beta change remains byte-identical.
+
+No timing maturity claim is derived from this correctness evaluation.

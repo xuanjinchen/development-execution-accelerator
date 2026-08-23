@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "skill": "development-execution-accelerator",
+  "status": "superseded",
+  "superseded_contract": "legacy paired controller plan",
+  "replacement": {
+    "runner": "scripts/run-lean-evaluation.js",
+    "process_limit": 11,
+    "subject_order": [
+      "pilot-with-skill",
+      "long-1-with",
+      "long-1-without",
+      "long-2-without",
+      "long-2-with",
+      "long-3-with",
+      "long-3-without",
+      "short-explicit",
+      "wait-overlap",
+      "implicit-positive",
+      "near-miss-negative"
+    ],
+    "non_scoring_pilot": {
+      "eval_id": "EVAL-003",
+      "variant": "with_skill",
+      "multi_agent": false
+    },
+    "long_pairs": {
+      "eval_id": "EVAL-001",
+      "count": 3,
+      "variants": [
+        "with_skill",
+        "without_skill"
+      ],
+      "paired_prompt_identity": "byte-identical",
+      "median_speedup_percent": 20
+    },
+    "explicit_short": {
+      "eval_id": "EVAL-004",
+      "count": 1,
+      "baseline": false,
+      "wall_clock_claim": false
+    },
+    "wait_overlap": {
+      "eval_id": "EVAL-008",
+      "count": 1
+    },
+    "implicit_positive": {
+      "eval_id": "EVAL-011",
+      "count": 1
+    },
+    "explicit_serial_near_miss": {
+      "eval_id": "EVAL-010",
+      "count": 1
+    },
+    "worker_evidence": [
+      "Two real worker calls implement the disjoint catalog and billing conflict domains.",
+      "The catalog and billing implementation intervals have positive overlap.",
+      "Each conflict domain keeps one writer, and background validation is not counted as a worker."
+    ]
+  },
+  "legacy_cli_scope": "Repository-local one-version analysis only; not an active campaign contract.",
+  "known_limitation": "Completed publication tombstones are retained and may accumulate."
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "scaffold_version": "0.1.0",
+  "status": "draft",
+  "skill": {
+    "name": "development-execution-accelerator",
+    "description": "Accelerate already-decided long-running software-development implementation and verification. Use automatically for substantial multi-step coding, fixes, refactors, tests, migrations, builds, or configuration work with independent workstreams, long validation waits, or reusable verification; exclude short single-path changes, architecture, requirements, scope, planning, read-only review, and explicit serial/no-parallel requests.",
+    "license": "Apache-2.0"
+  },
+  "initialized_at": "2026-08-19",
+  "initial_files": {
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "README.md": "a6bf8f5e8e333c2c5d4f6b43f0444abf8561ad2c5af78e3b6b27b43b36e529ea",
+    "SKILL.md": "3be68d2bc81ab2c481a5863cf74a4242c0da7483d5d26bffe3d605f1eb17a4d7",
+    "docs/decisions.md": "ff46c52aba621ec361f228be18b53dc6a2f64e6e71cf421b6ce0cbd907527792",
+    "docs/delivery-report.md": "2dd5e95e1ab25feda48c977084a6fe0e1f93f030df44aacaff43dc373c1a7441",
+    "docs/skill-brief.md": "b8ba4281c9b7edb7a83e9d053b71c16ade6f6e750a15d4d42f881e7ca7addaa7",
+    "evals/evals.json": "c139df3c92d5e9cd20c7cd12b29a718abed2fff72937ed26c9d228cecbd41288",
+    "package-lock.json": "ea4e3e566e63d0d2b000b6ccf39cfc0d7aecdd08e8969fd971114248ca6b01ce",
+    "package.json": "a3016b15e69f9930a6ffd806ed9636b0d4573399b4006c86856dfeac41828015"
+  }
+}

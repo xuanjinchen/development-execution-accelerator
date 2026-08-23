@@ -1,0 +1,10 @@
+# EVAL-001 — Superseded historical record
+
+Date recorded: 2026-08-20
+Disposition: SUPERSEDED — historical and non-certifying
+Historical Skill commit: `72a553bc446906717be14773c78566f3c961f411`
+Historical Skill SHA-256: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+
+This record came from an earlier Skill byte version, an earlier alpha/beta fixture, and a controller workflow that is not the current fixed lean campaign. Its former pass label and timing analysis do not apply to the current `SKILL.md`, representative catalog/billing fixture, native JSONL worker proof, or three-pair maturity gate.
+
+The historical run is retained only to explain provenance. No duration, speed ratio, or percentage conclusion is carried into the public delivery claim. Current EVAL-001 remains `not-run` in `evals/evals.json`; REQ-003 stays blocked until all three accepted current-byte long pairs satisfy correctness, native overlapping worker lifecycles, one writer per conflict domain, and the unchanged 20 percent paired-median gate.

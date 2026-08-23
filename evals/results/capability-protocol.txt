@@ -1,0 +1,12 @@
+# Capability protocol — superseded historical summary
+
+Date recorded: 2026-08-20
+Disposition: SUPERSEDED — historical and non-certifying
+Historical Skill commit: `72a553bc446906717be14773c78566f3c961f411`
+Historical Skill SHA-256: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+
+The earlier EVAL-001, EVAL-003, EVAL-004, EVAL-005, EVAL-007, and EVAL-010 summaries evaluated replaced Skill bytes, fixtures, prompts, and controller evidence. They are provenance only. They do not establish a current worker route, short-task boundary, fallback route, explicit-serial exclusion, wait overlap, platform compatibility, or named-Agent support.
+
+The current fixed lean campaign still requires accepted native JSONL evidence for the multi-agent-disabled pilot, three long with/without pairs, one explicitly loaded short subject, one real-work wait overlap, one implicit positive, and one explicit-serial long near miss. Until those runs exist, REQ-003, REQ-004, and REQ-006 remain blocked; REQ-001, REQ-002, and REQ-005 retain their recorded pending/blocked state. This artifact is not bound to an enabled capability claim and carries no timing or speed conclusion.
+
+REQ-006 remains blocked until EVAL-008 passes.

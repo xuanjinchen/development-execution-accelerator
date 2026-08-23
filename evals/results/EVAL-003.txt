@@ -1,0 +1,23 @@
+# EVAL-003 — Capability fallback
+
+Date: 2026-08-20
+Outcome: PASS (2/2 assertions)
+Skill commit evaluated: `72a553bc446906717be14773c78566f3c961f411`
+Skill SHA-256 evaluated: `0e5804a5801941a024ecf9f088df73d6e6673a20c73c7417993785983c219665`
+Controller evaluator: `gpt-5.6-terra` at `medium` reasoning effort; total tokens were unavailable/null and are not represented as zero.
+
+## Evidence and run disposition
+
+- Workspace: `../development-execution-accelerator-workspace/final-fix-72a553b/EVAL-003-capability-fallback/`
+- Accepted pair: `with_skill/run-2` and `without_skill/run-2`.
+- Preserved invalid pair: `with_skill/run-1` and `without_skill/run-1`; the with-Skill targeted and aggregate checks failed for the fixture's string-input expectation, so run-1 is excluded for correctness, not timing.
+- Primary objective evidence: accepted runs' `evidence/command-telemetry.json`, `evidence/diff.patch`, `evidence/dispatch-metadata.json`, `evidence/activity.md`, and `evidence/final-response.md`.
+
+The accepted with-Skill run used foreground shell commands only. Its dispatch/activity records contain no worker, background, incremental-wait, or plan-state operation. It selected the Fast path, changed only `src/value.js`, passed `npm run test:value` after implementation, then passed `npm test` with 3/3 tests. The baseline accepted run also passed the required checks.
+
+Objective disposition:
+
+1. ASSERT-001 passes: execution completes sequentially without claiming or probing unavailable capabilities.
+2. ASSERT-002 passes: targeted and required aggregate validation both pass without architecture or scope changes.
+
+The accepted with-Skill duration was 250.804s. The accepted baseline timing file records an anomalous 28,918.599s interval beginning on 2026-08-19; it is preserved as captured and is not used for any timing claim.
