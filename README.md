@@ -28,6 +28,8 @@ Local usable delivery completed on 2026-08-23. This public source preparation do
 
 Extended certification remains required for a quantitative speed claim or mature-delivery declaration: it includes the fixed 11-subject campaign and the 20% paired-median threshold. A full Git-history audit remains required for any history-clean claim. These extended gates do not rewrite the completed local usable-delivery status.
 
+The latest authorized fixed campaign stopped after a non-scoring infrastructure-invalid pilot and produced no accepted evidence; certification therefore remains incomplete.
+
 ## Minimal example
 
 For a substantial request such as “Implement the two approved independent checkout fixes, run each focused test, and then run the required integrated gate,” the workflow can overlap independent work while preserving upstream boundaries and validation.
@@ -52,7 +54,7 @@ During local repository development, run:
 npm run check
 ```
 
-`npm run gate:delivery` currently reports NOT_PASS because long-task selection, the single short-task zero-probe/state boundary, fallback and explicit-serial behavior, worker correctness and performance, validation reuse and local recovery, platform-neutral capability behavior, and real-work wait overlap still have pending and blocked current-byte behavior evidence. The fixed lean campaign must produce that evidence before mature delivery or any quantitative speed claim can be declared; this formal gate is not the local-installation gate described above.
+`npm run gate:delivery` currently reports NOT_PASS because required pending and blocked current-byte behavior evidence remains incomplete. The gaps include the single short-task zero-probe/state boundary, fallback and explicit-serial behavior, worker correctness and performance, validation reuse and local recovery, platform-neutral capability behavior, and real-work wait overlap. The fixed lean campaign covers only EVAL-001, EVAL-003, EVAL-004, EVAL-008, EVAL-010, and EVAL-011. EVAL-005, EVAL-006, EVAL-007, and EVAL-009 each require separate accepted current-byte evidence; mature delivery requires every gap to be closed, while any quantitative speed claim additionally requires the fixed campaign threshold. This formal gate is not the local-installation gate described above.
 
 ```powershell
 npm run gate:delivery

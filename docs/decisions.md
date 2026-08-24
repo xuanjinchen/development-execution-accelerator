@@ -94,6 +94,14 @@ Record requirement interpretations and superseding decisions without rewriting h
       "decision": "Authorize preparation of a first public source push to https://github.com/xuanjinchen/development-execution-accelerator while leaving the fixed 11-subject/20 percent certification unfinished and excluding Tag, GitHub Release, custom release assets, package-registry upload, quantitative claims, mature-delivery claims, and named-platform claims.",
       "evidence": "Latest authorized public-source requirement, bound to the unchanged current SKILL.md SHA-256 026b845023e3e436be578a923fb03fce47fe569bd8909465fbe0b594a7155a23.",
       "supersedes": "DEC-005"
+    },
+    {
+      "id": "DEC-012",
+      "status": "active",
+      "scope": "delivery-evidence",
+      "decision": "Treat the one authorized a5 attempt as a consumed non-scoring infrastructure failure with a validator-invalid pilot; it changes no Skill, evaluation result, or status, permits no rerun, and leaves the fixed 11-subject/20 percent requirement blocked.",
+      "evidence": "Task 10C truthful evidence-close brief for current-026b8450-a5.",
+      "supersedes": null
     }
   ]
 }
@@ -108,3 +116,9 @@ The fixed 11-subject campaign and 20% paired-median requirement still govern all
 ## DEC-011 Rationale and Consequences
 
 The public-source authorization supersedes the earlier local-only release decision without rewriting the local-delivery history. Its scope is intentionally limited to source preparation for the named repository. It does not authorize a Tag, GitHub Release, custom release assets, package upload, or any certification, maturity, or named-platform claim.
+
+## DEC-012 Rationale and Consequences
+
+The authorized a5 campaign stopped at an infrastructure-invalid pilot before any formal subject or fixture lifecycle could run. Its fail-closed validator result is therefore not accepted evidence of Skill behavior.
+
+The consumed no-rerun allocation leaves the fixed 11-subject campaign and 20 percent paired-median requirement blocked. This decision changes no runtime bytes, evaluation result, requirement status, track status, or certification claim.

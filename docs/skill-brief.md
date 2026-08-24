@@ -152,3 +152,5 @@ Use stable IDs for conflicts and acceptance criteria. Acceptance criteria record
 ## Delivery Tracks
 
 Local usable delivery completed on 2026-08-23. The blocked requirement and track statuses above remain truthful extended-certification evidence: the fixed 11-subject campaign and its 20 percent paired-median threshold gate any quantitative speed claim, and a full Git-history audit gates history-clean claims. The enabled `open-source-release` track is limited to public source-repository preparation and is evidenced by the unchanged current `SKILL.md` hash; it excludes Tag, GitHub Release, custom release assets, package-registry upload, quantitative certification, mature-delivery, and named-platform claims.
+
+The authorized a5 campaign stopped after an infrastructure-invalid pilot, supplied no accepted current-byte evidence, consumed the approved no-rerun attempt, and leaves quantitative and mature certification blocked.

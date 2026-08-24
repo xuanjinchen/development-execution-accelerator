@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
 
+import { main as runLeanEvaluationCli } from '../scripts/run-lean-evaluation.js';
 import {
   MAX_SUBJECT_PROCESSES,
   assertProcessBudget,
@@ -21,12 +22,95 @@ import {
   summarizeCampaign,
   validateNativeTrace,
   validateShortTrace,
+  verifySubjectHome,
   validateWaitOverlap,
   validateWorkerEvidence,
 } from '../src/lean-evaluation.js';
 
 const neutralLongPrompt = 'Implement the two approved modules, run their focused checks, then run the required aggregate check.';
 const neutralShortPrompt = 'Correct the finite-number behavior and run the focused check followed by the aggregate check.';
+const controlledLauncherRoot = await mkdtemp(path.join(os.tmpdir(), 'lean controlled launcher '));
+const controlledEntryPath = path.join(controlledLauncherRoot, 'controlled codex entry.js');
+await writeControlledCodexEntry(controlledEntryPath, 'codex-cli 0.150.0');
+const controlledLauncher = await resolveCodexLaunch({
+  entryPath: controlledEntryPath,
+  expectedVersion: 'codex-cli 0.150.0',
+});
+
+async function writeControlledCodexEntry(entryPath, version) {
+  await mkdir(path.dirname(entryPath), { recursive: true });
+  await writeFile(
+    entryPath,
+    `if (process.argv[2] !== '--version') process.exit(64);\nprocess.stdout.write(${JSON.stringify(`${version}\n`)});\n`,
+    'utf8',
+  );
+}
+
+async function createControlledSubjectHome() {
+  const subjectHome = await mkdtemp(path.join(os.tmpdir(), 'lean-controlled-home-'));
+  await mkdir(path.join(subjectHome, '.codex'), { recursive: true });
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+  return subjectHome;
+}
+
+async function createControlledCampaignSource() {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-campaign-source-'));
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-campaign-output-'));
+  await writeFile(path.join(repoRoot, 'SKILL.md'), 'current skill', 'utf8');
+  for (const fixture of ['long-task', 'short-task', 'wait-overlap']) {
+    const fixturePath = path.join(repoRoot, 'evals', 'fixtures', fixture);
+    await mkdir(fixturePath, { recursive: true });
+    await writeFile(path.join(fixturePath, 'fixture.txt'), fixture, 'utf8');
+  }
+  await writeFile(path.join(repoRoot, 'evals', 'evals.json'), JSON.stringify({
+    evals: [
+      { id: 'EVAL-001', prompt: 'Approved long catalog and billing work.' },
+      { id: 'EVAL-003', prompt: 'Approved foreground fallback pilot.' },
+      { id: 'EVAL-004', prompt: 'Approved short value fix.' },
+      { id: 'EVAL-008', prompt: 'Approved wait-overlap reporting work.' },
+      { id: 'EVAL-010', prompt: 'Approved long work; execute serially with the main Agent only.' },
+      { id: 'EVAL-011', prompt: 'Approved implicit long positive.' },
+    ],
+  }), 'utf8');
+  return { repoRoot, outputRoot };
+}
+
+async function writeBootstrapCodexEntry(entryPath, version, {
+  createSkillRoot = true,
+  replaceAuthArtifact = false,
+} = {}) {
+  const pilotTrace = `${[
+    event('thread.started'),
+    event('turn.started'),
+    ...completedCommand('catalog', 'npm run test:catalog'),
+    ...completedCommand('billing', 'npm run test:billing'),
+    ...completedCommand('gate', 'npm test'),
+    event('turn.completed'),
+  ].map((value) => JSON.stringify(value)).join('\n')}\n`;
+  await mkdir(path.dirname(entryPath), { recursive: true });
+  await writeFile(entryPath, [
+    "const { mkdirSync, unlinkSync, writeFileSync } = require('node:fs');",
+    "const path = require('node:path');",
+    `if (process.argv[2] === '--version') { process.stdout.write(${JSON.stringify(`${version}\n`)}); process.exit(0); }`,
+    "const attemptId = path.basename(path.dirname(process.cwd()));",
+    "if (attemptId === 'pilot-with-skill') {",
+    ...(createSkillRoot
+      ? ["  mkdirSync(path.join(process.env.CODEX_HOME, 'skills'), { recursive: true });"]
+      : []),
+    ...(replaceAuthArtifact
+      ? [
+        "  const authPath = path.join(process.env.CODEX_HOME, 'auth.json');",
+        '  unlinkSync(authPath);',
+        "  writeFileSync(authPath, 'replacement controlled fixture', 'utf8');",
+      ]
+      : []),
+    `  process.stdout.write(${JSON.stringify(pilotTrace)});`,
+    '  process.exit(0);',
+    '}',
+    'process.exit(64);',
+    '',
+  ].join('\n'), 'utf8');
+}
 
 function event(type, item) {
   return item === undefined ? { type } : { type, item };
@@ -121,10 +205,12 @@ for (const [mode, multiAgent] of [['pilot', false], ['formal', true]]) {
       prompt: neutralLongPrompt,
       userHome: 'C:/Users/tester',
       multiAgent,
+      launcher: controlledLauncher,
     });
 
-    assert.equal(invocation.command, 'codex');
+    assert.equal(invocation.command, controlledLauncher.command);
     assert.deepEqual(invocation.args, [
+      controlledLauncher.entryPath,
       'exec',
       '--json',
       '--ephemeral',
@@ -161,22 +247,25 @@ for (const [mode, multiAgent] of [['pilot', false], ['formal', true]]) {
 }
 
 test('passes only the documented subject environment allowlist', () => {
+  const subjectHome = path.resolve('C:/fixture/subject-home');
   const source = {
     PATH: 'tools', PATHEXT: '.CMD', SystemRoot: 'C:/example/Windows', COMSPEC: 'C:/example/Windows/System32/cmd.exe',
-    USERPROFILE: 'C:/Users/tester', APPDATA: 'C:/Users/tester/AppData/Roaming', LOCALAPPDATA: 'C:/Users/tester/AppData/Local',
+    HOME: 'C:/Users/tester', USERPROFILE: 'C:/Users/tester', APPDATA: 'C:/Users/tester/AppData/Roaming', LOCALAPPDATA: 'C:/Users/tester/AppData/Local',
     TEMP: 'C:/temp', TMP: 'C:/temp', LANG: 'en_US.UTF-8', LC_ALL: 'C.UTF-8', NODE_OPTIONS: '--no-warnings',
     CODEX_HOME: 'C:/Users/tester/.codex', GIT_CONFIG_NOSYSTEM: '1', npm_config_cache: 'C:/tmp/npm-cache',
     OPENAI_API_KEY: 'secret', HTTPS_PROXY: 'credential', RANDOM_SECRET: 'secret', npm_config_token: 'secret',
   };
-  assert.deepEqual(buildSubjectEnvironment(source), {
+  assert.deepEqual(buildSubjectEnvironment(source, 'win32', subjectHome), {
     PATH: 'tools', PATHEXT: '.CMD', SystemRoot: 'C:/example/Windows', COMSPEC: 'C:/example/Windows/System32/cmd.exe',
-    USERPROFILE: 'C:/Users/tester', APPDATA: 'C:/Users/tester/AppData/Roaming', LOCALAPPDATA: 'C:/Users/tester/AppData/Local',
+    APPDATA: 'C:/Users/tester/AppData/Roaming', LOCALAPPDATA: 'C:/Users/tester/AppData/Local',
     TEMP: 'C:/temp', TMP: 'C:/temp', LANG: 'en_US.UTF-8', LC_ALL: 'C.UTF-8',
-    CODEX_HOME: 'C:/Users/tester/.codex', npm_config_cache: 'C:/tmp/npm-cache',
+    npm_config_cache: 'C:/tmp/npm-cache',
+    HOME: subjectHome, USERPROFILE: subjectHome, CODEX_HOME: path.join(subjectHome, '.codex'),
   });
 });
 
-test('matches Windows subject environment names case-insensitively while preserving host spelling', () => {
+test('matches Windows system environment names case-insensitively while replacing identity roots', () => {
+  const subjectHome = path.resolve('C:/fixture/mixed-case-home');
   const source = {
     Path: 'C:/fixture/tools',
     ComSpec: 'C:/example/Windows/System32/cmd.exe',
@@ -193,44 +282,375 @@ test('matches Windows subject environment names case-insensitively while preserv
     npm_config_token: 'redacted-fixture',
   };
 
-  const subjectEnvironment = buildSubjectEnvironment(source, 'win32');
+  const subjectEnvironment = buildSubjectEnvironment(source, 'win32', subjectHome);
   assert.deepEqual(Object.keys(subjectEnvironment), [
-    'Path', 'ComSpec', 'SystemRoot', 'UserProfile', 'AppData', 'LocalAppData',
-    'Codex_Home', 'Temp', 'Lang', 'npm_config_cache',
+    'Path', 'ComSpec', 'SystemRoot', 'AppData', 'LocalAppData',
+    'Temp', 'Lang', 'npm_config_cache', 'HOME', 'USERPROFILE', 'CODEX_HOME',
   ]);
   assert.equal(subjectEnvironment.Path, 'C:/fixture/tools');
   assert.equal(subjectEnvironment.ComSpec, 'C:/example/Windows/System32/cmd.exe');
+  assert.equal(subjectEnvironment.HOME, subjectHome);
+  assert.equal(subjectEnvironment.USERPROFILE, subjectHome);
+  assert.equal(subjectEnvironment.CODEX_HOME, path.join(subjectHome, '.codex'));
   for (const excluded of ['OPENAI_API_KEY', 'HTTPS_PROXY', 'npm_config_token']) {
     assert.equal(Object.hasOwn(subjectEnvironment, excluded), false);
   }
 
-  assert.deepEqual(buildSubjectEnvironment({ Path: 'wrong-case', PATH: 'usable' }, 'linux'), {
+  assert.deepEqual(buildSubjectEnvironment({ Path: 'wrong-case', PATH: 'usable' }, 'linux', '/isolated/home'), {
     PATH: 'usable',
+    HOME: path.resolve('/isolated/home'),
+    USERPROFILE: path.resolve('/isolated/home'),
+    CODEX_HOME: path.join(path.resolve('/isolated/home'), '.codex'),
   });
 });
 
-test('resolves a Windows npm shim to the real Codex JavaScript entry without a shell', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-codex-shim-'));
+test('verifies an isolated subject home and rejects every user-global Skill root', async () => {
+  const subjectHome = await mkdtemp(path.join(os.tmpdir(), 'lean-subject-home-'));
+  await mkdir(path.join(subjectHome, '.codex'));
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+
+  assert.deepEqual(await verifySubjectHome(subjectHome), {
+    home: subjectHome,
+    codexHome: path.join(subjectHome, '.codex'),
+  });
+
+  for (const skillRoot of [
+    path.join(subjectHome, '.agents', 'skills'),
+    path.join(subjectHome, '.codex', 'skills'),
+  ]) {
+    await mkdir(skillRoot, { recursive: true });
+    await assert.rejects(verifySubjectHome(subjectHome), /isolated subject home.*Skill/iu);
+    await rm(skillRoot, { recursive: true });
+  }
+});
+
+test('subject-home authentication precondition requires a regular canonical auth artifact', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-subject-auth-'));
+  const emptyHome = path.join(root, 'empty-home');
+  await mkdir(path.join(emptyHome, '.codex'), { recursive: true });
+  await assert.rejects(verifySubjectHome(emptyHome), /authentication|auth\.json/iu);
+
+  const linkedArtifactHome = path.join(root, 'linked-artifact-home');
+  const externalAuth = path.join(root, 'external-auth.json');
+  await mkdir(path.join(linkedArtifactHome, '.codex'), { recursive: true });
+  await writeFile(externalAuth, 'controlled fixture', 'utf8');
+  await symlink(externalAuth, path.join(linkedArtifactHome, '.codex', 'auth.json'));
+  await assert.rejects(
+    verifySubjectHome(linkedArtifactHome),
+    /authentication|auth\.json|symbolic link/iu,
+  );
+
+  const linkedAncestorHome = path.join(root, 'linked-ancestor-home');
+  const externalCodexHome = path.join(root, 'external-codex-home');
+  await mkdir(linkedAncestorHome);
+  await mkdir(externalCodexHome);
+  await writeFile(path.join(externalCodexHome, 'auth.json'), 'controlled fixture', 'utf8');
+  await symlink(
+    externalCodexHome,
+    path.join(linkedAncestorHome, '.codex'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  await assert.rejects(
+    verifySubjectHome(linkedAncestorHome),
+    /authentication|canonical|symbolic link|junction|\.codex/iu,
+  );
+
+  const validHome = path.join(root, 'valid-home');
+  await mkdir(path.join(validHome, '.codex'), { recursive: true });
+  await writeFile(path.join(validHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+  assert.deepEqual(await verifySubjectHome(validHome), {
+    home: validHome,
+    codexHome: path.join(validHome, '.codex'),
+  });
+});
+
+test('campaign Subject Home preflight rejects a pre-existing personal Skill root', async () => {
+  const { repoRoot, outputRoot } = await createControlledCampaignSource();
+  const subjectHome = await createControlledSubjectHome();
+  await mkdir(path.join(subjectHome, '.agents', 'skills'), { recursive: true });
+  let attemptCalls = 0;
+
+  await assert.rejects(runLeanCampaign({
+    repoRoot,
+    outputRoot,
+    campaignName: 'preexisting-personal-skill',
+    launcher: controlledLauncher,
+    subjectHome,
+    runAttempt: async () => {
+      attemptCalls += 1;
+      return { summary: { valid: true, elapsed_ns: '1' } };
+    },
+  }), /isolated subject home.*Skill/iu);
+  assert.equal(attemptCalls, 0);
+});
+
+test('campaign Subject Home binding lets pilot runtime Skill roots survive later real attempts', async () => {
+  const { repoRoot, outputRoot } = await createControlledCampaignSource();
+  const subjectHome = await createControlledSubjectHome();
+  const launcherRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-bootstrap-launcher-'));
+  const entryPath = path.join(launcherRoot, 'bootstrap codex entry.js');
+  await writeBootstrapCodexEntry(entryPath, 'codex-cli 0.150.1');
+  const launcher = await resolveCodexLaunch({
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.1',
+  });
+
+  const campaign = await runLeanCampaign({
+    repoRoot,
+    outputRoot,
+    campaignName: 'runtime-skill-root',
+    launcher,
+    subjectHome,
+  });
+
+  assert.equal(campaign.result.attempts[0].summary.valid, true);
+  assert.equal(campaign.result.attempts[1].summary.phase, 'process');
+  assert.equal(campaign.result.attempts.length, MAX_SUBJECT_PROCESSES);
+});
+
+test('campaign Subject Home binding rejects a replaced authentication identity after pilot', async () => {
+  const { repoRoot, outputRoot } = await createControlledCampaignSource();
+  const subjectHome = await createControlledSubjectHome();
+  const launcherRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-auth-replacement-launcher-'));
+  const entryPath = path.join(launcherRoot, 'auth replacement codex entry.js');
+  await writeBootstrapCodexEntry(entryPath, 'codex-cli 0.150.2', {
+    createSkillRoot: false,
+    replaceAuthArtifact: true,
+  });
+  const launcher = await resolveCodexLaunch({
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.2',
+  });
+
+  await assert.rejects(runLeanCampaign({
+    repoRoot,
+    outputRoot,
+    campaignName: 'replaced-auth-identity',
+    launcher,
+    subjectHome,
+  }), /authentication.*identity/iu);
+});
+
+test('subject-home scope rejects repository and campaign-output overlap in either direction', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-subject-scope-'));
+  const launcher = controlledLauncher;
+  const cases = [
+    {
+      label: 'home-inside-repository',
+      repoRoot: path.join(root, 'case-1', 'repository'),
+      outputRoot: path.join(root, 'case-1', 'output'),
+      subjectHome: path.join(root, 'case-1', 'repository', 'subject-home'),
+    },
+    {
+      label: 'repository-inside-home',
+      repoRoot: path.join(root, 'case-2', 'subject-home', 'repository'),
+      outputRoot: path.join(root, 'case-2', 'output'),
+      subjectHome: path.join(root, 'case-2', 'subject-home'),
+    },
+    {
+      label: 'home-inside-output',
+      repoRoot: path.join(root, 'case-3', 'repository'),
+      outputRoot: path.join(root, 'case-3', 'output'),
+      subjectHome: path.join(root, 'case-3', 'output', 'subject-home'),
+    },
+    {
+      label: 'output-inside-home',
+      repoRoot: path.join(root, 'case-4', 'repository'),
+      outputRoot: path.join(root, 'case-4', 'subject-home', 'output'),
+      subjectHome: path.join(root, 'case-4', 'subject-home'),
+    },
+  ];
+
+  for (const value of cases) {
+    await mkdir(value.repoRoot, { recursive: true });
+    await mkdir(value.outputRoot, { recursive: true });
+    await mkdir(path.join(value.subjectHome, '.codex'), { recursive: true });
+    await writeFile(path.join(value.subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+    await assert.rejects(runLeanCampaign({
+      repoRoot: value.repoRoot,
+      outputRoot: value.outputRoot,
+      campaignName: value.label,
+      launcher,
+      subjectHome: value.subjectHome,
+      runAttempt: async () => {
+        throw new Error('overlap validation must run before an attempt');
+      },
+    }), /subject home.*overlap/iu);
+  }
+
+  const directSource = path.join(root, 'direct-attempt', 'repository');
+  const directOutput = path.join(root, 'direct-attempt', 'output');
+  const directHome = path.join(directSource, 'subject-home');
+  const skillPath = path.join(directSource, 'SKILL.md');
+  await mkdir(path.join(directHome, '.codex'), { recursive: true });
+  await mkdir(directOutput, { recursive: true });
+  await writeFile(path.join(directHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+  await writeFile(skillPath, 'controlled skill', 'utf8');
+  let spawnCount = 0;
+  await assert.rejects(runLeanAttempt({
+    sourceRoot: directSource,
+    outputRoot: directOutput,
+    attemptDir: path.join(directOutput, 'attempt'),
+    variant: 'without_skill',
+    skillPath,
+    prompt: neutralLongPrompt,
+    launcher,
+    subjectHome: directHome,
+    spawnImpl() {
+      spawnCount += 1;
+      throw new Error('overlap validation must run before spawn');
+    },
+  }), /subject home.*overlap/iu);
+  assert.equal(spawnCount, 0);
+});
+
+test('verifies the controller-provided Codex entry and exact version without PATH discovery', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-codex-entry-'));
   const entryPath = path.join(root, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-  await mkdir(path.dirname(entryPath), { recursive: true });
-  await writeFile(path.join(root, 'codex.cmd'), '@echo off', 'utf8');
-  await writeFile(entryPath, '#!/usr/bin/env node', 'utf8');
+  await writeControlledCodexEntry(entryPath, 'codex-cli 0.150.0');
 
   assert.deepEqual(await resolveCodexLaunch({
-    platform: 'win32',
-    pathValue: root,
-    pathExt: '.COM;.EXE;.BAT;.CMD',
-    execPath: 'C:/fixture/runtime/node.exe',
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.0',
   }), {
-    command: path.resolve('C:/fixture/runtime/node.exe'),
+    command: await realpath(process.execPath),
     prefixArgs: [entryPath],
     entryPath,
+    version: 'codex-cli 0.150.0',
   });
+});
+
+test('rejects a controller-provided Codex entry when its exact version differs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-codex-version-'));
+  const entryPath = path.join(root, 'codex.js');
+  await writeControlledCodexEntry(entryPath, 'codex-cli 0.149.0');
+
+  await assert.rejects(resolveCodexLaunch({
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.0',
+  }), /version mismatch.*0\.150\.0.*0\.149\.0/iu);
+});
+
+test('does not let caller-controlled code attest an ordinary canonical entry', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-codex-attestation-'));
+  const entryPath = path.join(root, 'ordinary canonical file.js');
+  await writeFile(entryPath, 'ordinary canonical file', 'utf8');
+  let fakeProbeCalls = 0;
+
+  await assert.rejects(resolveCodexLaunch({
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.0',
+    versionProbe: async () => {
+      fakeProbeCalls += 1;
+      return { stdout: 'codex-cli 0.150.0\n', stderr: '' };
+    },
+  }));
+  assert.equal(fakeProbeCalls, 0);
+});
+
+test('rejects ancestor aliases for pinned entry and subject-home identity', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-canonical-identity-'));
+  const targetRoot = path.join(root, 'canonical-target');
+  const aliasRoot = path.join(root, 'ancestor-alias');
+  const entryPath = path.join(targetRoot, 'install', 'codex.js');
+  const subjectHome = path.join(targetRoot, 'subject-home');
+  await mkdir(path.dirname(entryPath), { recursive: true });
+  await mkdir(path.join(subjectHome, '.codex'), { recursive: true });
+  await writeControlledCodexEntry(entryPath, 'codex-cli 0.150.0');
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+  await symlink(targetRoot, aliasRoot, process.platform === 'win32' ? 'junction' : 'dir');
+
+  await assert.rejects(resolveCodexLaunch({
+    entryPath: path.join(aliasRoot, 'install', 'codex.js'),
+    expectedVersion: 'codex-cli 0.150.0',
+  }), /canonical|alias|symbolic link|junction/iu);
+  await assert.rejects(
+    verifySubjectHome(path.join(aliasRoot, 'subject-home')),
+    /canonical|alias|symbolic link|junction/iu,
+  );
+});
+
+test('production boundaries reject PATH launchers and launcher-shaped impostors before dispatch', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-launcher-identity-'));
+  const repoRoot = path.join(root, 'repository');
+  const outputRoot = path.join(root, 'output');
+  const subjectHome = path.join(root, 'subject-home');
+  const entryPath = path.join(root, 'pinned-codex.js');
+  const skillPath = path.join(repoRoot, 'SKILL.md');
+  await mkdir(path.join(subjectHome, '.codex'), { recursive: true });
+  await mkdir(path.join(repoRoot, 'evals', 'fixtures'), { recursive: true });
+  await mkdir(outputRoot);
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
+  await writeControlledCodexEntry(entryPath, 'codex-cli 0.150.0');
+  await writeFile(skillPath, 'controlled skill', 'utf8');
+  const verifiedLauncher = await resolveCodexLaunch({
+    entryPath,
+    expectedVersion: 'codex-cli 0.150.0',
+  });
+  const impostors = [
+    { command: 'codex', prefixArgs: [] },
+    { ...verifiedLauncher, command: 'node' },
+    { ...verifiedLauncher, prefixArgs: [path.join(root, 'other-entry.js')] },
+    { ...verifiedLauncher, prefixArgs: [...verifiedLauncher.prefixArgs] },
+  ];
+  let spawnCount = 0;
+  for (const [index, launcher] of impostors.entries()) {
+    await assert.rejects(runLeanAttempt({
+      sourceRoot: repoRoot,
+      outputRoot,
+      attemptDir: path.join(outputRoot, `impostor-${index}`),
+      variant: 'without_skill',
+      skillPath,
+      prompt: neutralLongPrompt,
+      launcher,
+      subjectHome,
+      spawnImpl() {
+        spawnCount += 1;
+        throw new Error('launcher validation must run before spawn');
+      },
+    }), /controller-verified.*launcher|verified launcher/iu);
+  }
+  assert.equal(spawnCount, 0);
+
+  assert.throws(() => buildCodexInvocation({
+    workspaceDir: repoRoot,
+    prompt: neutralLongPrompt,
+    userHome: subjectHome,
+  }), /controller-verified.*launcher|verified launcher/iu);
+
+  for (const fixture of ['long-task', 'short-task', 'wait-overlap']) {
+    const fixturePath = path.join(repoRoot, 'evals', 'fixtures', fixture);
+    await mkdir(fixturePath, { recursive: true });
+    await writeFile(path.join(fixturePath, 'fixture.txt'), fixture, 'utf8');
+  }
+  const prompts = [
+    ['EVAL-001', 'Approved long catalog and billing work.'],
+    ['EVAL-003', 'Approved foreground fallback pilot.'],
+    ['EVAL-004', 'Approved short value fix.'],
+    ['EVAL-008', 'Approved wait-overlap reporting work.'],
+    ['EVAL-010', 'Approved long work; execute serially with the main Agent only.'],
+    ['EVAL-011', 'Approved implicit long positive.'],
+  ].map(([id, prompt]) => ({ id, prompt }));
+  await writeFile(path.join(repoRoot, 'evals', 'evals.json'), JSON.stringify({ evals: prompts }), 'utf8');
+  let attemptCount = 0;
+  await assert.rejects(runLeanCampaign({
+    repoRoot,
+    outputRoot,
+    campaignName: 'impostor-campaign',
+    launcher: { ...verifiedLauncher, prefixArgs: [...verifiedLauncher.prefixArgs] },
+    subjectHome,
+    runAttempt: async () => {
+      attemptCount += 1;
+      return { summary: { valid: false, elapsed_ns: '1' } };
+    },
+  }), /controller-verified.*launcher|verified launcher/iu);
+  assert.equal(attemptCount, 0);
 });
 
 test('preserves a failure summary when spawn throws synchronously', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-spawn-sync-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'skill bytes', 'utf8');
 
   const result = await runLeanAttempt({
@@ -240,6 +660,8 @@ test('preserves a failure summary when spawn throws synchronously', async () => 
     variant: 'with_skill',
     skillPath,
     prompt: neutralLongPrompt,
+    launcher: controlledLauncher,
+    subjectHome,
     spawnImpl() {
       const error = new Error('Windows shim rejected');
       error.code = 'EPERM';
@@ -254,9 +676,81 @@ test('preserves a failure summary when spawn throws synchronously', async () => 
   assert.deepEqual(JSON.parse(await readFile(path.join(root, 'attempt', 'summary.json'), 'utf8')), result.summary);
 });
 
+test('redacts both subject-home path forms from persisted failure artifacts', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lean-home-redaction-'));
+  const repoRoot = path.join(root, 'repository');
+  const outputRoot = path.join(root, 'output');
+  const skillPath = path.join(repoRoot, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome();
+  const portableHome = subjectHome.split(path.sep).join('/');
+  const leakedError = `controlled failure context: ${subjectHome}; portable: ${portableHome}`;
+  await mkdir(repoRoot);
+  await mkdir(outputRoot);
+  await writeFile(skillPath, 'controlled skill', 'utf8');
+
+  const attempt = await runLeanAttempt({
+    sourceRoot: repoRoot,
+    outputRoot,
+    attemptDir: path.join(outputRoot, 'direct-attempt'),
+    variant: 'with_skill',
+    skillPath,
+    prompt: neutralLongPrompt,
+    launcher: controlledLauncher,
+    subjectHome,
+    spawnImpl() {
+      throw new Error(leakedError);
+    },
+  });
+  const persistedSummary = await readFile(
+    path.join(outputRoot, 'direct-attempt', 'summary.json'),
+    'utf8',
+  );
+  for (const artifact of [JSON.stringify(attempt.summary), persistedSummary]) {
+    assert.match(artifact, /controlled failure context/iu);
+    assert.equal(artifact.includes(subjectHome), false);
+    assert.equal(artifact.includes(portableHome), false);
+  }
+
+  for (const fixture of ['long-task', 'short-task', 'wait-overlap']) {
+    const fixturePath = path.join(repoRoot, 'evals', 'fixtures', fixture);
+    await mkdir(fixturePath, { recursive: true });
+    await writeFile(path.join(fixturePath, 'fixture.txt'), fixture, 'utf8');
+  }
+  const prompts = [
+    ['EVAL-001', 'Approved long catalog and billing work.'],
+    ['EVAL-003', 'Approved foreground fallback pilot.'],
+    ['EVAL-004', 'Approved short value fix.'],
+    ['EVAL-008', 'Approved wait-overlap reporting work.'],
+    ['EVAL-010', 'Approved long work; execute serially with the main Agent only.'],
+    ['EVAL-011', 'Approved implicit long positive.'],
+  ].map(([id, prompt]) => ({ id, prompt }));
+  await writeFile(
+    path.join(repoRoot, 'evals', 'evals.json'),
+    JSON.stringify({ evals: prompts }),
+    'utf8',
+  );
+  const campaign = await runLeanCampaign({
+    repoRoot,
+    outputRoot,
+    campaignName: 'redacted-failure',
+    launcher: controlledLauncher,
+    subjectHome,
+    runAttempt: async () => ({
+      summary: { valid: false, phase: 'spawn', error: leakedError, elapsed_ns: '1' },
+    }),
+  });
+  const persistedResult = await readFile(path.join(campaign.campaignDir, 'result.json'), 'utf8');
+  for (const artifact of [JSON.stringify(campaign.result), persistedResult]) {
+    assert.match(artifact, /controlled failure context/iu);
+    assert.equal(artifact.includes(subjectHome), false);
+    assert.equal(artifact.includes(portableHome), false);
+  }
+});
+
 test('preserves a failure summary when the child emits error', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-child-error-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'skill bytes', 'utf8');
 
   const result = await runLeanAttempt({
@@ -266,6 +760,8 @@ test('preserves a failure summary when the child emits error', async () => {
     variant: 'with_skill',
     skillPath,
     prompt: neutralLongPrompt,
+    launcher: controlledLauncher,
+    subjectHome,
     spawnImpl() {
       const child = new EventEmitter();
       child.stdout = new PassThrough();
@@ -293,6 +789,7 @@ test('stream failure summary handles early stdout and stderr errors', async () =
   for (const [label, failingIndex] of [['stdout', 0], ['stderr', 1]]) {
     const root = await mkdtemp(path.join(os.tmpdir(), `lean-${label}-error-`));
     const skillPath = path.join(root, 'SKILL.md');
+    const subjectHome = await createControlledSubjectHome(root);
     await writeFile(skillPath, 'skill bytes', 'utf8');
     let streamIndex = 0;
     const result = await runLeanAttempt({
@@ -302,7 +799,8 @@ test('stream failure summary handles early stdout and stderr errors', async () =
       variant: 'with_skill',
       skillPath,
       prompt: neutralLongPrompt,
-      launcher: { command: 'codex', prefixArgs: [] },
+      launcher: controlledLauncher,
+      subjectHome,
       createWriteStreamImpl() {
         const stream = new PassThrough();
         const currentIndex = streamIndex;
@@ -339,6 +837,7 @@ test('stream failure summary handles early stdout and stderr errors', async () =
 test('stream failure summary contains a source-stream EIO without crashing or hanging', { timeout: 2000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-source-stream-error-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'skill bytes', 'utf8');
 
   const result = await runLeanAttempt({
@@ -348,7 +847,8 @@ test('stream failure summary contains a source-stream EIO without crashing or ha
     variant: 'with_skill',
     skillPath,
     prompt: neutralLongPrompt,
-    launcher: { command: 'codex', prefixArgs: [] },
+    launcher: controlledLauncher,
+    subjectHome,
     spawnImpl() {
       const child = new PassThrough();
       child.stdout = new PassThrough();
@@ -381,6 +881,7 @@ test('stream failure summary contains a source-stream EIO without crashing or ha
 test('stream failure summary preserves the first of two destination errors', { timeout: 2000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-repeated-stream-error-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'skill bytes', 'utf8');
   let streamIndex = 0;
 
@@ -391,7 +892,8 @@ test('stream failure summary preserves the first of two destination errors', { t
     variant: 'with_skill',
     skillPath,
     prompt: neutralLongPrompt,
-    launcher: { command: 'codex', prefixArgs: [] },
+    launcher: controlledLauncher,
+    subjectHome,
     createWriteStreamImpl() {
       const stream = new PassThrough();
       if (streamIndex === 0) {
@@ -459,6 +961,10 @@ test('freezes the 11-process allocation and keeps only long pairs neutral', () =
 test('runs only the fixed fresh 11-subject campaign and excludes pilot from timing', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-campaign-source-'));
   const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-campaign-output-'));
+  const subjectHome = await mkdtemp(path.join(os.tmpdir(), 'lean-campaign-home-'));
+  const launcher = controlledLauncher;
+  await mkdir(path.join(subjectHome, '.codex'));
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
   await writeFile(path.join(repoRoot, 'SKILL.md'), 'current skill', 'utf8');
   for (const fixture of ['long-task', 'short-task', 'wait-overlap']) {
     const fixturePath = path.join(repoRoot, 'evals', 'fixtures', fixture);
@@ -487,6 +993,8 @@ test('runs only the fixed fresh 11-subject campaign and excludes pilot from timi
     repoRoot,
     outputRoot,
     campaignName: 'fixed-campaign',
+    launcher,
+    subjectHome,
     runAttempt: async (config) => {
       observed.push(config);
       return { summary: { valid: true, elapsed_ns: String(durations[config.subject.id] ?? 10) } };
@@ -500,6 +1008,8 @@ test('runs only the fixed fresh 11-subject campaign and excludes pilot from timi
   assert.equal(observed[0].multiAgent, false);
   assert.equal(observed[0].prompt, prompts['EVAL-003']);
   assert.equal(observed.slice(1).every(({ multiAgent }) => multiAgent === true), true);
+  assert.equal(observed.every((config) => config.launcher === launcher), true);
+  assert.equal(observed.every((config) => config.subjectHome === subjectHome), true);
   const workerSubjects = observed.filter(({ mode }) => mode === 'worker');
   assert.deepEqual(workerSubjects.map(({ subject }) => subject.id), [
     'long-1-with', 'long-2-with', 'long-3-with', 'implicit-positive',
@@ -513,15 +1023,26 @@ test('runs only the fixed fresh 11-subject campaign and excludes pilot from timi
   assert.equal(campaign.result.performance.with_skill_median_ns, '80');
   assert.equal(campaign.result.performance.without_skill_median_ns, '100');
   assert.equal(campaign.result.performance.meets_twenty_percent, true);
-  assert.equal((await readFile(path.join(campaign.campaignDir, 'manifest.json'), 'utf8')).includes(prompts['EVAL-001']), false);
+  assert.equal(campaign.result.certified, true);
+  const manifestText = await readFile(path.join(campaign.campaignDir, 'manifest.json'), 'utf8');
+  assert.equal(manifestText.includes(prompts['EVAL-001']), false);
+  assert.equal(manifestText.includes(subjectHome), false);
+  assert.deepEqual(campaign.manifest.codex, {
+    version: 'codex-cli 0.150.0',
+    entry_sha256: '6e8d01030dd4c5016281f40f0c599e7e15a9f9b254d5a22a852c3eef250d64c8',
+  });
   await assert.rejects(runLeanCampaign({
-    repoRoot, outputRoot, campaignName: 'fixed-campaign', runAttempt: async () => {},
+    repoRoot, outputRoot, campaignName: 'fixed-campaign', launcher, subjectHome, runAttempt: async () => {},
   }), /already exists/iu);
 });
 
 test('stops the campaign after an invalid pilot while preserving its result', async () => {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-pilot-gate-source-'));
   const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'lean-pilot-gate-output-'));
+  const subjectHome = await mkdtemp(path.join(os.tmpdir(), 'lean-pilot-gate-home-'));
+  const launcher = controlledLauncher;
+  await mkdir(path.join(subjectHome, '.codex'));
+  await writeFile(path.join(subjectHome, '.codex', 'auth.json'), 'controlled fixture', 'utf8');
   await writeFile(path.join(repoRoot, 'SKILL.md'), 'current skill', 'utf8');
   for (const fixture of ['long-task', 'short-task', 'wait-overlap']) {
     const fixturePath = path.join(repoRoot, 'evals', 'fixtures', fixture);
@@ -544,6 +1065,8 @@ test('stops the campaign after an invalid pilot while preserving its result', as
     repoRoot,
     outputRoot,
     campaignName: 'invalid-pilot',
+    launcher,
+    subjectHome,
     runAttempt: async (config) => {
       observed.push(config);
       return { summary: { valid: false, elapsed_ns: '1' } };
@@ -580,13 +1103,118 @@ test('campaign summary preserves failed attempts and withholds timing until corr
   assert.deepEqual(result.performance, { evaluated: false, pilot_excluded: true });
 });
 
-test('campaign CLI accepts only safe output-root and campaign-name inputs', () => {
-  assert.deepEqual(parseCampaignArgs(['--output-root', 'C:/tmp/runs', '--campaign-name', 'campaign-01']), {
-    outputRoot: path.resolve('C:/tmp/runs'), campaignName: 'campaign-01',
+test('withholds certification from a valid campaign below the twenty-percent median threshold', () => {
+  const subjects = buildSubjectPlan({
+    longTaskPrompt: neutralLongPrompt,
+    shortTaskPrompt: neutralShortPrompt,
+    waitTaskPrompt: 'wait',
+    implicitPositivePrompt: neutralLongPrompt,
+    nearMissPrompt: 'execute the approved long work serially',
+  });
+  const attempts = subjects.map((subject) => ({
+    subject,
+    summary: {
+      valid: true,
+      elapsed_ns: subject.phase === 'formal' && subject.scenario === 'long'
+        ? (subject.variant === 'with_skill' ? '81' : '100')
+        : '10',
+    },
+  }));
+
+  const result = summarizeCampaign(attempts, '500');
+
+  assert.equal(result.valid, true);
+  assert.equal(result.correctness_passed, true);
+  assert.equal(result.performance.evaluated, true);
+  assert.equal(result.performance.meets_twenty_percent, false);
+  assert.equal(result.certified, false);
+});
+
+test('campaign CLI requires the pinned Codex and isolated subject-home contracts', () => {
+  assert.deepEqual(parseCampaignArgs([
+    '--output-root', 'C:/tmp/runs',
+    '--campaign-name', 'campaign-01',
+    '--codex-entry', 'C:/tmp/codex/bin/codex.js',
+    '--codex-version', 'codex-cli 0.150.0',
+    '--subject-home', 'C:/tmp/subject-home',
+  ]), {
+    outputRoot: path.resolve('C:/tmp/runs'),
+    campaignName: 'campaign-01',
+    codexEntry: path.resolve('C:/tmp/codex/bin/codex.js'),
+    codexVersion: 'codex-cli 0.150.0',
+    subjectHome: path.resolve('C:/tmp/subject-home'),
   });
   assert.throws(() => parseCampaignArgs(['config.json']), /Usage/iu);
-  assert.throws(() => parseCampaignArgs(['--output-root', 'C:/tmp/runs', '--campaign-name', '../escape']), /campaign name/iu);
-  assert.throws(() => parseCampaignArgs(['--output-root', 'C:/tmp/runs', '--campaign-name', 'ok', '--subject', 'extra']), /Usage/iu);
+  assert.throws(() => parseCampaignArgs([
+    '--output-root', 'C:/tmp/runs', '--campaign-name', 'campaign-01',
+  ]), /Usage/iu);
+  assert.throws(() => parseCampaignArgs([
+    '--output-root', 'C:/tmp/runs', '--campaign-name', '../escape',
+    '--codex-entry', 'C:/tmp/codex/bin/codex.js', '--codex-version', 'codex-cli 0.150.0',
+    '--subject-home', 'C:/tmp/subject-home',
+  ]), /campaign name/iu);
+});
+
+test('campaign CLI exits zero only for the full certification predicate', async () => {
+  const config = {
+    outputRoot: 'controlled-output',
+    campaignName: 'controlled-campaign',
+    codexEntry: 'controlled-entry.js',
+    codexVersion: 'codex-cli 0.150.0',
+    subjectHome: 'controlled-home',
+  };
+  const launcher = {
+    command: 'controlled-node', prefixArgs: ['controlled-entry.js'],
+    entryPath: 'controlled-entry.js', version: 'codex-cli 0.150.0',
+  };
+  const cases = [
+    [{
+      valid: true, correctness_passed: true,
+      performance: { evaluated: true, meets_twenty_percent: true }, certified: true,
+    }, 0],
+    [{
+      valid: true, correctness_passed: true,
+      performance: { evaluated: true, meets_twenty_percent: false }, certified: false,
+    }, 1],
+    [{
+      valid: false, correctness_passed: false,
+      performance: { evaluated: false }, certified: true,
+    }, 1],
+    [{
+      valid: true, correctness_passed: true,
+      performance: { evaluated: false, meets_twenty_percent: true }, certified: true,
+    }, 1],
+  ];
+  for (const [result, expectedExitCode] of cases) {
+    const writes = [];
+    const calls = [];
+    const exitCode = await runLeanEvaluationCli(['controlled'], {
+      stdout: { write: (value) => writes.push(value) },
+      parseArgs(argv) {
+        calls.push({ step: 'parse', argv });
+        return config;
+      },
+      async resolveLaunch(options) {
+        calls.push({ step: 'resolve', options });
+        return launcher;
+      },
+      async runCampaign(options) {
+        calls.push({ step: 'campaign', options });
+        return { result };
+      },
+      repoRoot: 'controlled-repository',
+    });
+
+    assert.equal(exitCode, expectedExitCode);
+    assert.deepEqual(calls.map(({ step }) => step), ['parse', 'resolve', 'campaign']);
+    assert.deepEqual(calls[1].options, {
+      entryPath: config.codexEntry,
+      expectedVersion: config.codexVersion,
+    });
+    assert.equal(calls[2].options.launcher, launcher);
+    assert.equal(calls[2].options.subjectHome, config.subjectHome);
+    assert.deepEqual(JSON.parse(writes.join('')), result);
+  }
 });
 
 test('creates a fresh isolated attempt and exposes only the current repo-scoped Skill', async () => {
@@ -691,6 +1319,7 @@ test('fixture root identity rejects a source root that is a symlink or junction'
 test('final-state identity rejects staged Skill deletion, tampering, extra state, and baseline state', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-final-skill-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'current skill bytes', 'utf8');
   const raw = `${[
     event('thread.started'), event('turn.started'), event('turn.completed'),
@@ -706,7 +1335,8 @@ test('final-state identity rejects staged Skill deletion, tampering, extra state
       variant,
       skillPath,
       prompt: neutralLongPrompt,
-      launcher: { command: 'codex', prefixArgs: [] },
+      launcher: controlledLauncher,
+      subjectHome,
       spawnImpl() {
         return completedJsonlChild(raw, {
           beforeClose() {
@@ -742,6 +1372,7 @@ test('final-state identity rejects staged Skill deletion, tampering, extra state
 test('captures native JSONL bytes directly and summarizes only the fresh attempt', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-eval-run-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome();
   await writeFile(skillPath, 'current skill bytes', 'utf8');
   const raw = [
     event('thread.started'),
@@ -751,7 +1382,11 @@ test('captures native JSONL bytes directly and summarizes only the fresh attempt
     event('turn.completed'),
   ].map((value) => JSON.stringify(value)).join('\n') + '\n';
 
-  const spawnImpl = () => completedJsonlChild(Buffer.from(raw), { stderr: 'fixture stderr' });
+  const launches = [];
+  const spawnImpl = (command, args, options) => {
+    launches.push({ command, args, options });
+    return completedJsonlChild(Buffer.from(raw), { stderr: 'fixture stderr' });
+  };
 
   const result = await runLeanAttempt({
     sourceRoot: root,
@@ -761,6 +1396,14 @@ test('captures native JSONL bytes directly and summarizes only the fresh attempt
     skillPath,
     prompt: neutralLongPrompt,
     requiredCommands: ['npm run test:catalog', 'npm test'],
+    launcher: controlledLauncher,
+    subjectHome,
+    environment: {
+      PATH: 'controlled-tools',
+      HOME: 'C:/Users/tester',
+      USERPROFILE: 'C:/Users/tester',
+      CODEX_HOME: 'C:/Users/tester/.codex',
+    },
     spawnImpl,
   });
 
@@ -768,6 +1411,19 @@ test('captures native JSONL bytes directly and summarizes only the fresh attempt
   assert.equal(await readFile(result.stderrPath, 'utf8'), 'fixture stderr');
   assert.equal(result.summary.valid, true);
   assert.deepEqual(result.summary.commands, ['npm run test:catalog', 'npm test']);
+  assert.equal(launches.length, 1);
+  assert.deepEqual({
+    HOME: launches[0].options.env.HOME,
+    USERPROFILE: launches[0].options.env.USERPROFILE,
+    CODEX_HOME: launches[0].options.env.CODEX_HOME,
+  }, {
+    HOME: subjectHome,
+    USERPROFILE: subjectHome,
+    CODEX_HOME: path.join(subjectHome, '.codex'),
+  });
+  assert.equal(launches[0].args.join('\n').includes('C:/Users/tester'), false);
+  assert.equal((await readFile(path.join(root, 'attempt-1', 'summary.json'), 'utf8')).includes('C:/Users/tester'), false);
+  assert.equal((await readFile(path.join(root, 'attempt-1', 'summary.json'), 'utf8')).includes(subjectHome), false);
 });
 
 test('rejects malformed JSONL and lifecycle or required-command order violations', () => {
@@ -1085,6 +1741,7 @@ test('wait protocol accepts honest overlap without weakening ordinary command co
 
   const root = await mkdtemp(path.join(os.tmpdir(), 'lean-wait-protocol-'));
   const skillPath = path.join(root, 'SKILL.md');
+  const subjectHome = await createControlledSubjectHome(root);
   await writeFile(skillPath, 'skill bytes', 'utf8');
   const raw = `${passing.map((value) => JSON.stringify(value)).join('\n')}\n`;
   const result = await runLeanAttempt({
@@ -1097,7 +1754,8 @@ test('wait protocol accepts honest overlap without weakening ordinary command co
     requiredCommands,
     mode: 'wait',
     waitExpectation,
-    launcher: { command: 'codex', prefixArgs: [] },
+    launcher: controlledLauncher,
+    subjectHome,
     spawnImpl() {
       return completedJsonlChild(raw);
     },

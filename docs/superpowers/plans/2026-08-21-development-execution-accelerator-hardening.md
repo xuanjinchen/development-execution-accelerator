@@ -922,7 +922,7 @@ git commit -m "feat: analyze paired acceleration evidence"
 
 - [ ] Review the complete current diff and untracked delivery files for requirement drift, sensitive information, package whitelist, misleading evidence, and SCOPED Chinese comments.
 - [ ] Run focused tests iteratively and `npm run check` once after the complete change; then run `npm run audit`, `npm run validate`, `npm run gate:delivery` when the readiness prerequisites permit, and `npm pack --dry-run --json --ignore-scripts`.
-- [ ] Require current tracked plan/spec content to contain no private absolute path and treat current-tree/package safety as local-blocking. The historical audit reports 10 immutable old blobs; this fix wave does not rewrite history or weaken the scanner.
+- [ ] Require current tracked plan/spec content to contain no private absolute path and treat current-tree/package safety as local-blocking. An earlier historical audit reported 10 immutable old blobs; the current fail-closed scanner reports 0 current-worktree findings and 16 immutable reachable-history findings. This fix wave does not rewrite history or weaken the scanner.
 - [ ] If a later fix changes `SKILL.md`, prompt fixtures, or formal behavior, invalidate affected evidence and restart the accepted-version allocation rather than editing hashes around it.
 
 ---

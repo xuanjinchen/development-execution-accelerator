@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import {
   copyFile,
   cp,
@@ -22,12 +22,39 @@ const FORBIDDEN_PAIR_HINT = /skill|worker|parallel|serial/iu;
 const FORBIDDEN_SHORT_TOOLS = /spawn_agent|worker|background|write_stdin|wait_agent|wait_threads|update_plan|plan_state/iu;
 const FORBIDDEN_SHORT_COMMAND = /Start-Process|spawn_agent|background|write_stdin|wait_agent|wait_threads|update_plan|plan[_ -]?state|session/iu;
 const TRAILING_BACKGROUND_COMMAND = /(?:^|[^&])&\s*$/u;
+const VERIFIED_CODEX_LAUNCHERS = new WeakMap();
+const CAMPAIGN_SUBJECT_HOME_BINDINGS = new WeakMap();
 
 function requireText(value, name) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new TypeError(`${name} must be a non-empty string.`);
   }
   return value;
+}
+
+async function requireCanonicalPath(value, name) {
+  const resolved = path.resolve(requireText(value, name));
+  const canonical = await realpath(resolved);
+  if (path.relative(resolved, canonical) !== '') {
+    throw new Error(`${name} must use its canonical path without aliases.`);
+  }
+  return canonical;
+}
+
+function pathsOverlap(left, right) {
+  const relative = path.relative(left, right);
+  const leftContainsRight = relative === ''
+    || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+  const reverse = path.relative(right, left);
+  const rightContainsLeft = reverse === ''
+    || (!reverse.startsWith(`..${path.sep}`) && reverse !== '..' && !path.isAbsolute(reverse));
+  return leftContainsRight || rightContainsLeft;
+}
+
+function assertSubjectHomeDisjoint(home, roots) {
+  if (roots.some((root) => pathsOverlap(home, root))) {
+    throw new Error('Isolated subject home must not overlap the repository or campaign output.');
+  }
 }
 
 function portablePath(value) {
@@ -51,45 +78,39 @@ const SUBJECT_ENV_KEYS = new Set([
 const WINDOWS_SUBJECT_ENV_KEYS = new Set([...SUBJECT_ENV_KEYS].map((key) => key.toLowerCase()));
 
 /** Windows 环境名大小写不敏感，但输出保留宿主键名，避免改写可用的 Path/ComSpec。 */
-export function buildSubjectEnvironment(source = process.env, platform = process.platform) {
+export function buildSubjectEnvironment(source = process.env, platform = process.platform, subjectHome) {
+  const isolatedHome = path.resolve(requireText(subjectHome, 'subjectHome'));
   const matches = platform === 'win32'
     ? (key) => WINDOWS_SUBJECT_ENV_KEYS.has(key.toLowerCase())
     : (key) => SUBJECT_ENV_KEYS.has(key);
-  return Object.fromEntries(Object.entries(source)
-    .filter(([key, value]) => matches(key) && typeof value === 'string'));
+  const identityRoots = new Set(['home', 'userprofile', 'codex_home']);
+  return {
+    ...Object.fromEntries(Object.entries(source)
+      .filter(([key, value]) => matches(key)
+        && !identityRoots.has(platform === 'win32' ? key.toLowerCase() : key)
+        && typeof value === 'string')),
+    HOME: isolatedHome,
+    USERPROFILE: isolatedHome,
+    CODEX_HOME: path.join(isolatedHome, '.codex'),
+  };
 }
 
-/** Windows npm shim 不能直接交给 spawn；只执行同一安装根中的真实 JS 入口。 */
-export async function resolveCodexLaunch({
-  platform = process.platform,
-  pathValue = process.env.PATH ?? '',
-  pathExt = process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD',
-  execPath = process.execPath,
-} = {}) {
-  if (platform !== 'win32') {
-    return { command: 'codex', prefixArgs: [], entryPath: null };
+async function inspectSubjectHome(subjectHome, requireAbsentSkillRoots) {
+  const home = await requireCanonicalPath(subjectHome, 'subjectHome');
+  const homeStats = await lstat(home);
+  if (!homeStats.isDirectory() || homeStats.isSymbolicLink()) {
+    throw new Error('Isolated subject home must be a real directory.');
   }
-  const extensions = pathExt.split(';').filter(Boolean).map((value) => value.toLowerCase());
-  const names = ['codex.cmd', 'codex.ps1', 'codex.exe']
-    .filter((name) => name.endsWith('.ps1') || extensions.includes(path.extname(name).toLowerCase()));
-  for (const directory of pathValue.split(';').filter(Boolean)) {
-    for (const name of names) {
+  const codexHome = await requireCanonicalPath(path.join(home, '.codex'), 'CODEX_HOME');
+  const codexStats = await lstat(codexHome);
+  if (!codexStats.isDirectory() || codexStats.isSymbolicLink()) {
+    throw new Error('Isolated subject home must contain a real .codex directory.');
+  }
+  if (requireAbsentSkillRoots) {
+    for (const skillRoot of [path.join(home, '.agents', 'skills'), path.join(codexHome, 'skills')]) {
       try {
-        const shim = path.join(directory, name);
-        const shimStats = await lstat(shim);
-        if (!shimStats.isFile() || shimStats.isSymbolicLink()) {
-          continue;
-        }
-        const entryPath = path.join(directory, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-        const entryStats = await lstat(entryPath);
-        if (!entryStats.isFile() || entryStats.isSymbolicLink()) {
-          continue;
-        }
-        return {
-          command: path.resolve(execPath),
-          prefixArgs: [entryPath],
-          entryPath,
-        };
+        await lstat(skillRoot);
+        throw new Error('Isolated subject home must not expose any user-global Skill root.');
       } catch (error) {
         if (error?.code !== 'ENOENT') {
           throw error;
@@ -97,7 +118,118 @@ export async function resolveCodexLaunch({
       }
     }
   }
-  throw new Error('Unable to resolve the installed Codex JavaScript entry from PATH.');
+  let authPath;
+  try {
+    authPath = await requireCanonicalPath(path.join(codexHome, 'auth.json'), 'authentication artifact');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error('Isolated subject home requires a file-backed .codex/auth.json authentication artifact.');
+    }
+    throw error;
+  }
+  const authStats = await lstat(authPath);
+  if (!authStats.isFile() || authStats.isSymbolicLink()) {
+    throw new Error('Isolated subject home authentication artifact must be a regular non-symbolic-link file.');
+  }
+  return {
+    home,
+    codexHome,
+    authPath,
+    homeIdentity: `${homeStats.dev}:${homeStats.ino}`,
+    codexHomeIdentity: `${codexStats.dev}:${codexStats.ino}`,
+    authIdentity: `${authStats.dev}:${authStats.ino}`,
+  };
+}
+
+/** 只检查隔离边界和认证文件元数据，不读取、复制或记录认证内容。 */
+export async function verifySubjectHome(subjectHome) {
+  const { home, codexHome } = await inspectSubjectHome(subjectHome, true);
+  return { home, codexHome };
+}
+
+// campaign 首次排除个人 Skill；私有绑定让后续 attempt 只接受同一 Home 与认证文件身份。
+async function bindCampaignSubjectHome(subjectHome) {
+  const identity = await inspectSubjectHome(subjectHome, true);
+  const binding = Object.freeze({});
+  CAMPAIGN_SUBJECT_HOME_BINDINGS.set(binding, identity);
+  return binding;
+}
+
+async function verifyCampaignSubjectHome(binding) {
+  const expected = CAMPAIGN_SUBJECT_HOME_BINDINGS.get(binding);
+  if (expected === undefined) {
+    throw new TypeError('A campaign-bound Subject Home is required.');
+  }
+  const current = await inspectSubjectHome(expected.home, false);
+  if (current.home !== expected.home
+    || current.codexHome !== expected.codexHome
+    || current.homeIdentity !== expected.homeIdentity
+    || current.codexHomeIdentity !== expected.codexHomeIdentity) {
+    throw new Error('Campaign Subject Home identity changed after preflight.');
+  }
+  if (current.authPath !== expected.authPath || current.authIdentity !== expected.authIdentity) {
+    throw new Error('Campaign Subject Home authentication identity changed after preflight.');
+  }
+  return { home: current.home, codexHome: current.codexHome };
+}
+
+function probeCodexVersion(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { encoding: 'utf8', windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+  });
+}
+
+function requireVerifiedCodexLauncher(launcher) {
+  const identity = launcher !== null && typeof launcher === 'object'
+    ? VERIFIED_CODEX_LAUNCHERS.get(launcher)
+    : undefined;
+  if (identity === undefined
+    || launcher.command !== identity.command
+    || launcher.entryPath !== identity.entryPath
+    || launcher.version !== identity.version
+    || !Array.isArray(launcher.prefixArgs)
+    || launcher.prefixArgs.length !== 1
+    || launcher.prefixArgs[0] !== identity.entryPath) {
+    throw new TypeError('A controller-verified Codex launcher is required.');
+  }
+  return launcher;
+}
+
+/** 真实执行控制器锁定的 JS 入口，避免 PATH 或调用方伪造认证对象。 */
+export async function resolveCodexLaunch({
+  entryPath,
+  expectedVersion,
+} = {}) {
+  const resolvedEntry = await requireCanonicalPath(entryPath, 'entryPath');
+  const expected = requireText(expectedVersion, 'expectedVersion');
+  const entryStats = await lstat(resolvedEntry);
+  if (!entryStats.isFile() || entryStats.isSymbolicLink()) {
+    throw new Error('Codex entry must be a regular file without symbolic links.');
+  }
+  const command = await requireCanonicalPath(process.execPath, 'Node executable');
+  const commandStats = await lstat(command);
+  if (!commandStats.isFile() || commandStats.isSymbolicLink()) {
+    throw new Error('Node executable must be a regular file without symbolic links.');
+  }
+  const { stdout } = await probeCodexVersion(command, [resolvedEntry, '--version']);
+  const version = stdout.trim();
+  if (version !== expected) {
+    throw new Error(`Codex version mismatch: expected ${expected}, received ${version || '<empty>'}.`);
+  }
+  const launcher = Object.freeze({
+    command,
+    prefixArgs: Object.freeze([resolvedEntry]),
+    entryPath: resolvedEntry,
+    version,
+  });
+  VERIFIED_CODEX_LAUNCHERS.set(launcher, { command, entryPath: resolvedEntry, version });
+  return launcher;
 }
 
 /** 固定所有会影响 subject 权限、模型和个人 Skill 隔离的启动参数。 */
@@ -106,13 +238,14 @@ export function buildCodexInvocation({
   prompt,
   userHome = os.homedir(),
   multiAgent = true,
-  launcher = { command: 'codex', prefixArgs: [] },
+  launcher,
 }) {
   const resolvedWorkspace = path.resolve(requireText(workspaceDir, 'workspaceDir'));
+  const verifiedLauncher = requireVerifiedCodexLauncher(launcher);
   return {
-    command: launcher.command,
+    command: verifiedLauncher.command,
     args: [
-      ...launcher.prefixArgs,
+      ...verifiedLauncher.prefixArgs,
       'exec',
       '--json',
       '--ephemeral',
@@ -249,14 +382,25 @@ export function buildSubjectPlan({
 }
 
 export function parseCampaignArgs(argv) {
-  if (argv.length !== 4 || argv[0] !== '--output-root' || argv[2] !== '--campaign-name') {
-    throw new TypeError('Usage: run-lean-evaluation --output-root <directory> --campaign-name <name>');
+  if (argv.length !== 10
+    || argv[0] !== '--output-root'
+    || argv[2] !== '--campaign-name'
+    || argv[4] !== '--codex-entry'
+    || argv[6] !== '--codex-version'
+    || argv[8] !== '--subject-home') {
+    throw new TypeError('Usage: run-lean-evaluation --output-root <directory> --campaign-name <name> --codex-entry <file> --codex-version <version> --subject-home <directory>');
   }
   const campaignName = requireText(argv[3], 'campaignName');
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/iu.test(campaignName)) {
     throw new TypeError('Campaign name must be a safe filename component.');
   }
-  return { outputRoot: path.resolve(requireText(argv[1], 'outputRoot')), campaignName };
+  return {
+    outputRoot: path.resolve(requireText(argv[1], 'outputRoot')),
+    campaignName,
+    codexEntry: path.resolve(requireText(argv[5], 'codexEntry')),
+    codexVersion: requireText(argv[7], 'codexVersion'),
+    subjectHome: path.resolve(requireText(argv[9], 'subjectHome')),
+  };
 }
 
 function digestText(text) {
@@ -268,11 +412,20 @@ function medianNs(values) {
   return ordered[Math.floor(ordered.length / 2)];
 }
 
+/** 最终认证门只依赖原始结果字段，避免失真的派生标志绕过 20% 阈值。 */
+export function isCertifiedResult(result) {
+  return result?.valid === true
+    && result.correctness_passed === true
+    && result.performance?.evaluated === true
+    && result.performance.meets_twenty_percent === true;
+}
+
 export function summarizeCampaign(attempts, elapsedNs) {
   const correctnessPassed = attempts.length === MAX_SUBJECT_PROCESSES
     && attempts.every(({ summary }) => summary?.valid === true);
   const result = {
     valid: correctnessPassed,
+    certified: false,
     elapsed_ns: String(elapsedNs),
     correctness_passed: correctnessPassed,
     attempts,
@@ -296,6 +449,7 @@ export function summarizeCampaign(attempts, elapsedNs) {
     without_skill_median_ns: String(withoutMedian),
     meets_twenty_percent: withMedian * 100n <= withoutMedian * 80n,
   };
+  result.certified = isCertifiedResult(result);
   return result;
 }
 
@@ -342,12 +496,18 @@ export async function runLeanCampaign({
   repoRoot,
   outputRoot,
   campaignName,
+  launcher,
+  subjectHome,
   runAttempt = runLeanAttempt,
   nowNs = process.hrtime.bigint,
 }) {
   const startedNs = nowNs();
   const canonicalRepo = await realpath(path.resolve(repoRoot));
   const canonicalOutput = await realpath(path.resolve(outputRoot));
+  const subjectHomeBinding = await bindCampaignSubjectHome(subjectHome);
+  const isolatedHome = CAMPAIGN_SUBJECT_HOME_BINDINGS.get(subjectHomeBinding);
+  assertSubjectHomeDisjoint(isolatedHome.home, [canonicalRepo, canonicalOutput]);
+  const verifiedLauncher = requireVerifiedCodexLauncher(launcher);
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/iu.test(campaignName)) {
     throw new TypeError('Campaign name must be a safe filename component.');
   }
@@ -378,15 +538,18 @@ export async function runLeanCampaign({
   const manifest = {
     subject_count: plan.length,
     skill_sha256: await sha256File(skillPath),
+    codex: {
+      version: verifiedLauncher.version,
+      entry_sha256: await sha256File(verifiedLauncher.entryPath),
+    },
     fixture_sha256: fixtureIdentities,
     subjects: plan.map((subject) => ({ id: subject.id, prompt_sha256: digestText(subject.prompt) })),
   };
   await writeFile(path.join(campaignDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
-  const launcher = await resolveCodexLaunch();
   const attempts = [];
   for (const subject of plan) {
     const contract = subjectContract(canonicalRepo, subject);
-    const attempt = await runAttempt({
+    const attemptOptions = {
       sourceRoot: canonicalRepo,
       outputRoot: campaignDir,
       attemptDir: path.join(campaignDir, subject.id),
@@ -395,11 +558,18 @@ export async function runLeanCampaign({
       prompt: subject.prompt,
       promptSha256: digestText(subject.prompt),
       subject,
-      launcher,
+      launcher: verifiedLauncher,
+      subjectHome: isolatedHome.home,
       multiAgent: subject.phase !== 'pilot',
       ...contract,
+    };
+    const attempt = runAttempt === runLeanAttempt
+      ? await runCampaignLeanAttempt(attemptOptions, subjectHomeBinding)
+      : await runAttempt(attemptOptions);
+    attempts.push({
+      subject: { ...subject, prompt: undefined },
+      summary: redactSubjectHomeFromArtifact(attempt.summary, isolatedHome.home),
     });
-    attempts.push({ subject: { ...subject, prompt: undefined }, summary: attempt.summary });
     // 无效 pilot 仍保留在结果中，但不得启动未经 preflight 验证的正式 subject。
     if (subject.phase === 'pilot' && attempt.summary?.valid !== true) {
       break;
@@ -835,6 +1005,27 @@ function errorText(error) {
   return `${code}${error?.message ?? String(error)}`;
 }
 
+/** 仅抹除隔离 Home 的两种完整路径表示，保留错误码和其余诊断上下文。 */
+function redactSubjectHomeFromArtifact(value, subjectHome) {
+  const privatePaths = [...new Set([subjectHome, portablePath(subjectHome)])];
+  if (typeof value === 'string') {
+    return privatePaths.reduce(
+      (redacted, privatePath) => redacted.split(privatePath).join('<isolated-subject-home>'),
+      value,
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSubjectHomeFromArtifact(item, subjectHome));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      redactSubjectHomeFromArtifact(item, subjectHome),
+    ]));
+  }
+  return value;
+}
+
 async function destroyStreams(streams) {
   await Promise.all(streams.map(async (stream) => {
     if (stream === undefined) {
@@ -862,7 +1053,7 @@ async function writeFailureSummary(attemptDir, summary) {
 }
 
 /** 四个流端点在拥有期内共享首错门；后续错误只被吸收，拆卸完成后才移除监听。 */
-export async function runLeanAttempt({
+async function runLeanAttemptWithVerifiedHome({
   sourceRoot,
   outputRoot,
   attemptDir,
@@ -876,25 +1067,28 @@ export async function runLeanAttempt({
   workerExpectation,
   spawnImpl = spawn,
   createWriteStreamImpl = createWriteStream,
-  userHome,
+  subjectHome,
   launcher,
   multiAgent = true,
   promptSha256 = digestText(prompt),
   allowedPaths = [],
   environment = process.env,
   nowNs = process.hrtime.bigint,
-}) {
+}, isolatedHome) {
   const startedNs = nowNs();
+  const canonicalSource = await realpath(path.resolve(sourceRoot));
+  const canonicalOutput = await realpath(path.resolve(outputRoot));
+  assertSubjectHomeDisjoint(isolatedHome.home, [canonicalSource, canonicalOutput]);
+  const verifiedLauncher = requireVerifiedCodexLauncher(launcher);
   const prepared = await prepareAttempt({
     sourceRoot, outputRoot, attemptDir, variant, skillPath, fixturePath,
   });
-  const resolvedLauncher = launcher ?? await resolveCodexLaunch();
   const invocation = buildCodexInvocation({
     workspaceDir: prepared.workspaceDir,
     prompt,
-    userHome,
+    userHome: isolatedHome.home,
     multiAgent,
-    launcher: resolvedLauncher,
+    launcher: verifiedLauncher,
   });
   const jsonlPath = path.join(prepared.attemptDir, 'native-events.jsonl');
   const stderrPath = path.join(prepared.attemptDir, 'stderr.txt');
@@ -931,13 +1125,13 @@ export async function runLeanAttempt({
   const failAttempt = async (phase, error, processResult = { exitCode: null, signal: null }) => {
     await teardownChild(child, [stdout, stderr]);
     stopObservingStreams();
-    const summary = {
+    const summary = redactSubjectHomeFromArtifact({
       valid: false,
       phase,
       error: errorText(error),
       elapsed_ns: String(nowNs() - startedNs),
       paths: knownPaths,
-    };
+    }, isolatedHome.home);
     await writeFailureSummary(prepared.attemptDir, summary);
     return { ...prepared, ...processResult, jsonlPath, stderrPath, summary };
   };
@@ -952,7 +1146,7 @@ export async function runLeanAttempt({
   try {
     child = spawnImpl(invocation.command, invocation.args, {
       cwd: prepared.workspaceDir,
-      env: buildSubjectEnvironment(environment),
+      env: buildSubjectEnvironment(environment, process.platform, isolatedHome.home),
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -1060,6 +1254,17 @@ export async function runLeanAttempt({
       paths: { jsonl: jsonlPath, stderr: stderrPath },
     };
   }
+  summary = redactSubjectHomeFromArtifact(summary, isolatedHome.home);
   await writeFile(path.join(prepared.attemptDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`, { flag: 'wx' });
   return { ...prepared, ...processResult, jsonlPath, stderrPath, summary };
+}
+
+async function runCampaignLeanAttempt(options, subjectHomeBinding) {
+  const isolatedHome = await verifyCampaignSubjectHome(subjectHomeBinding);
+  return runLeanAttemptWithVerifiedHome(options, isolatedHome);
+}
+
+export async function runLeanAttempt(options) {
+  const isolatedHome = await verifySubjectHome(options?.subjectHome);
+  return runLeanAttemptWithVerifiedHome(options, isolatedHome);
 }

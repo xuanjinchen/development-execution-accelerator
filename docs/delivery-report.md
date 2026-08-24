@@ -66,6 +66,10 @@ Passing requirements use exactly the four fields shown by REQ-005. Blocked requi
 
 Policy status: complete for the authorized local installation on 2026-08-23. Local usable delivery is distinct from the fixed 11-subject campaign and 20% paired-median threshold, which remain required for any quantitative speed claim or mature certification.
 
+## Extended Certification Status
+
+The authorized a5 campaign stopped after a non-scoring infrastructure-invalid pilot and supplied no accepted current-byte evidence. It supports no speed claim or mature-delivery claim, and the consumed no-rerun attempt leaves extended certification blocked.
+
 ## Public Source Scope
 
 This preparation authorizes a first public source push for `https://github.com/xuanjinchen/development-execution-accelerator`. It does not change any strict requirement status or capability claim, and it is not quantitative certification, mature delivery, a named-platform claim, a Tag, a GitHub Release, custom release assets, or a package-registry publication. The enabled `open-source-release` track is bound to the unchanged `SKILL.md` SHA-256 `026b845023e3e436be578a923fb03fce47fe569bd8909465fbe0b594a7155a23`.
