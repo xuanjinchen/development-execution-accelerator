@@ -102,6 +102,14 @@ Record requirement interpretations and superseding decisions without rewriting h
       "decision": "Treat the one authorized a5 attempt as a consumed non-scoring infrastructure failure with a validator-invalid pilot; it changes no Skill, evaluation result, or status, permits no rerun, and leaves the fixed 11-subject/20 percent requirement blocked.",
       "evidence": "Task 10C truthful evidence-close brief for current-026b8450-a5.",
       "supersedes": null
+    },
+    {
+      "id": "DEC-013",
+      "status": "active",
+      "scope": "delivery-evidence",
+      "decision": "Record current-026b8450-a6 as one a6 pilot and zero formal subjects: authenticated ChatGPT access rejected fixed model gpt-5.6-sol before any Agent command or Skill behavior, so the campaign is infrastructure-invalid rather than a Skill failure; correctness_passed=false, performance.evaluated=false, no 20-percent result exists, certified=false, and certification remains blocked.",
+      "evidence": "Task 10D independently approved raw-evidence review for current-026b8450-a6.",
+      "supersedes": null
     }
   ]
 }
@@ -122,3 +130,9 @@ The public-source authorization supersedes the earlier local-only release decisi
 The authorized a5 campaign stopped at an infrastructure-invalid pilot before any formal subject or fixture lifecycle could run. Its fail-closed validator result is therefore not accepted evidence of Skill behavior.
 
 The consumed no-rerun allocation leaves the fixed 11-subject campaign and 20 percent paired-median requirement blocked. This decision changes no runtime bytes, evaluation result, requirement status, track status, or certification claim.
+
+## DEC-013 Rationale and Consequences
+
+The independently approved a6 campaign stopped after one infrastructure-invalid pilot and before every formal subject. The authenticated ChatGPT account rejected fixed model `gpt-5.6-sol` before any Agent command or Skill behavior, so this result is not a Skill behavior failure and creates no correctness, performance, 20-percent, or certification result.
+
+No retry, extra sample, twelfth subject, threshold change, push, Tag, Release, or package publication occurred. A new fixed campaign is blocked unless compatible authenticated access to the fixed model is available and an explicit authorization is issued for a new never-before-existing campaign; this decision does not imply that one is currently authorized.

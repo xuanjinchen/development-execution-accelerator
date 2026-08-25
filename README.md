@@ -28,7 +28,7 @@ Local usable delivery completed on 2026-08-23. This public source preparation do
 
 Extended certification remains required for a quantitative speed claim or mature-delivery declaration: it includes the fixed 11-subject campaign and the 20% paired-median threshold. A full Git-history audit remains required for any history-clean claim. These extended gates do not rewrite the completed local usable-delivery status.
 
-The latest authorized fixed campaign stopped after a non-scoring infrastructure-invalid pilot and produced no accepted evidence; certification therefore remains incomplete.
+The current `current-026b8450-a6` fixed campaign ran exactly one a6 pilot and zero formal subjects. The authenticated ChatGPT account rejected fixed model `gpt-5.6-sol` before any Agent command or Skill behavior, so the outcome is infrastructure-invalid rather than a Skill failure. `correctness_passed=false`, `performance.evaluated=false`, no 20-percent result exists, and `certified=false`; it produced no accepted evidence and certification remains blocked. A new fixed campaign requires compatible authenticated access to the fixed model and explicit authorization for a new never-before-existing campaign.
 
 ## Minimal example
 

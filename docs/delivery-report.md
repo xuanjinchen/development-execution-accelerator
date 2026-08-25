@@ -68,7 +68,7 @@ Policy status: complete for the authorized local installation on 2026-08-23. Loc
 
 ## Extended Certification Status
 
-The authorized a5 campaign stopped after a non-scoring infrastructure-invalid pilot and supplied no accepted current-byte evidence. It supports no speed claim or mature-delivery claim, and the consumed no-rerun attempt leaves extended certification blocked.
+The current `current-026b8450-a6` campaign ran exactly one a6 pilot and zero formal subjects. The authenticated ChatGPT account rejected fixed model `gpt-5.6-sol` before any Agent command or Skill behavior, so it is infrastructure-invalid rather than a Skill failure. `correctness_passed=false`, `performance.evaluated=false`, no 20-percent result exists, and `certified=false`; it supplies no accepted current-byte evidence, supports no speed or mature-delivery claim, and certification remains blocked. A new fixed campaign requires compatible authenticated access to the fixed model and explicit authorization for a new never-before-existing campaign.
 
 ## Public Source Scope
 

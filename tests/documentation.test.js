@@ -157,6 +157,37 @@ test('README 按当前 scaffold 模式提供可执行入口', () => {
   }
 });
 
+test('Task 10D 如实记录已批准的 a6 基础设施无效结果', () => {
+  const currentStatusDocuments = [
+    'README.md',
+    'docs/skill-brief.md',
+    'docs/delivery-report.md',
+  ];
+  for (const target of currentStatusDocuments) {
+    const source = read(target);
+    assert.ok(source.includes('current-026b8450-a6'), `${target} 应记录当前 a6 结果`);
+    assert.ok(source.includes('infrastructure-invalid'), `${target} 应保留基础设施无效分类`);
+    assert.ok(source.includes('certification remains blocked'), `${target} 不得把无效结果写成认证`);
+  }
+
+  const decisions = read('docs/decisions.md');
+  assert.ok(decisions.includes('DEC-013'));
+  assert.ok(decisions.includes('current-026b8450-a6'));
+  assert.ok(decisions.includes('certified=false'));
+
+  const taskReport = read('.superpowers/sdd/2026-08-21-development-execution-accelerator-hardening/task-10-report.md');
+  for (const value of [
+    'Task 10D',
+    'current-026b8450-a6',
+    'Exactly one a6 pilot ran; zero formal subjects ran.',
+    'correctness_passed=false',
+    'performance.evaluated=false',
+    'certified=false',
+  ]) {
+    assert.ok(taskReport.includes(value), `Task 10D 报告缺少: ${value}`);
+  }
+});
+
 test('AGENTS 采用用户优先型并固定开发与授权边界', () => {
   const source = read('AGENTS.md');
   for (const value of [
