@@ -198,21 +198,13 @@ test('Task 10D 如实记录已批准的 a6 基础设施无效结果', () => {
 });
 
 test('Task 10D 当前状态回归拒绝矛盾认证声明', () => {
-  const readmePath = path.join(ROOT, 'README.md');
-  const original = readFileSync(readmePath);
-  const childEnv = { ...process.env };
-  delete childEnv.NODE_TEST_CONTEXT;
-  try {
-    writeFileSync(readmePath, Buffer.from(original.toString('utf8').replace('`certified=false`', '`certified=true`')));
-    const result = spawnSync(process.execPath, [
-      '--test',
-      '--test-name-pattern=^Task 10D 如实记录已批准的 a6 基础设施无效结果$',
-      'tests/documentation.test.js',
-    ], { cwd: ROOT, encoding: 'utf8', env: childEnv });
-    assert.notEqual(result.status, 0, result.output);
-  } finally {
-    writeFileSync(readmePath, original);
-  }
+  const source = read('README.md');
+  const currentStatus = source.match(/^The current `current-026b8450-a6`[^\r\n]*/mu);
+  assert.notEqual(currentStatus, null, 'README 应记录当前 a6 结果');
+  assert.throws(
+    () => assertInvalidA6CurrentStatus(currentStatus[0].replace('`certified=false`', '`certified=true`'), '矛盾 README 当前状态'),
+    /矛盾 README 当前状态.*certified=(?:false|true)/u,
+  );
 });
 
 test('AGENTS 采用用户优先型并固定开发与授权边界', () => {
