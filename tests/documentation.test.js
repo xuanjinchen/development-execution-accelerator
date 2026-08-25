@@ -42,6 +42,21 @@ function assertInOrder(source, values) {
   }
 }
 
+function assertInvalidA6CurrentStatus(source, label) {
+  for (const value of [
+    'current-026b8450-a6',
+    'infrastructure-invalid',
+    'correctness_passed=false',
+    'performance.evaluated=false',
+    'no 20-percent result exists',
+    'certified=false',
+  ]) {
+    assert.ok(source.includes(value), `${label} 缺少当前 a6 状态: ${value}`);
+  }
+  assert.match(source, /(?:exactly )?one a6 pilot(?: ran)?(?: and|;) zero formal subjects(?: ran)?/iu, `${label} 未固定 pilot/formal 数量`);
+  assert.doesNotMatch(source, /(?:authorized|current) a5 campaign|current-026b8450-a5|correctness_passed=true|performance\.evaluated=true|certified=true/iu, `${label} 包含过时或矛盾状态`);
+}
+
 function concreteReference(value) {
   let decoded;
   try {
@@ -165,26 +180,38 @@ test('Task 10D 如实记录已批准的 a6 基础设施无效结果', () => {
   ];
   for (const target of currentStatusDocuments) {
     const source = read(target);
-    assert.ok(source.includes('current-026b8450-a6'), `${target} 应记录当前 a6 结果`);
-    assert.ok(source.includes('infrastructure-invalid'), `${target} 应保留基础设施无效分类`);
-    assert.ok(source.includes('certification remains blocked'), `${target} 不得把无效结果写成认证`);
+    const currentStatus = source.match(/^The current `current-026b8450-a6`[^\r\n]*/mu);
+    assert.notEqual(currentStatus, null, `${target} 应记录当前 a6 结果`);
+    assertInvalidA6CurrentStatus(currentStatus[0], target);
+    assert.ok(currentStatus[0].includes('certification remains blocked'), `${target} 不得把无效结果写成认证`);
   }
 
   const decisions = read('docs/decisions.md');
-  assert.ok(decisions.includes('DEC-013'));
-  assert.ok(decisions.includes('current-026b8450-a6'));
-  assert.ok(decisions.includes('certified=false'));
+  const decision013 = decisions.match(/"id": "DEC-013"[\s\S]*?"supersedes": null/u);
+  assert.notEqual(decision013, null, '应记录 DEC-013');
+  assertInvalidA6CurrentStatus(decision013[0], 'DEC-013');
 
   const taskReport = read('.superpowers/sdd/2026-08-21-development-execution-accelerator-hardening/task-10-report.md');
-  for (const value of [
-    'Task 10D',
-    'current-026b8450-a6',
-    'Exactly one a6 pilot ran; zero formal subjects ran.',
-    'correctness_passed=false',
-    'performance.evaluated=false',
-    'certified=false',
-  ]) {
-    assert.ok(taskReport.includes(value), `Task 10D 报告缺少: ${value}`);
+  const task10D = taskReport.match(/## Task 10D approved invalid a6 evidence close[\s\S]*/u);
+  assert.notEqual(task10D, null, '应附加 Task 10D 报告');
+  assertInvalidA6CurrentStatus(task10D[0], 'Task 10D 报告');
+});
+
+test('Task 10D 当前状态回归拒绝矛盾认证声明', () => {
+  const readmePath = path.join(ROOT, 'README.md');
+  const original = readFileSync(readmePath);
+  const childEnv = { ...process.env };
+  delete childEnv.NODE_TEST_CONTEXT;
+  try {
+    writeFileSync(readmePath, Buffer.from(original.toString('utf8').replace('`certified=false`', '`certified=true`')));
+    const result = spawnSync(process.execPath, [
+      '--test',
+      '--test-name-pattern=^Task 10D 如实记录已批准的 a6 基础设施无效结果$',
+      'tests/documentation.test.js',
+    ], { cwd: ROOT, encoding: 'utf8', env: childEnv });
+    assert.notEqual(result.status, 0, result.output);
+  } finally {
+    writeFileSync(readmePath, original);
   }
 });
 
