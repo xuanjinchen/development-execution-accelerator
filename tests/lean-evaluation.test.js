@@ -220,7 +220,7 @@ for (const [mode, multiAgent] of [['pilot', false], ['formal', true]]) {
       '--color',
       'never',
       '--model',
-      'gpt-5.6-sol',
+      'gpt-5.6-terra',
       '--sandbox',
       'workspace-write',
       '--config',
@@ -1030,6 +1030,8 @@ test('runs only the fixed fresh 11-subject campaign and excludes pilot from timi
   assert.deepEqual(campaign.manifest.codex, {
     version: 'codex-cli 0.150.0',
     entry_sha256: '6e8d01030dd4c5016281f40f0c599e7e15a9f9b254d5a22a852c3eef250d64c8',
+    model: 'gpt-5.6-terra',
+    model_reasoning_effort: 'high',
   });
   await assert.rejects(runLeanCampaign({
     repoRoot, outputRoot, campaignName: 'fixed-campaign', launcher, subjectHome, runAttempt: async () => {},

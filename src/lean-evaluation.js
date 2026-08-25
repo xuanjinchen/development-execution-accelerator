@@ -17,6 +17,9 @@ import { finished } from 'node:stream/promises';
 
 export const MAX_SUBJECT_PROCESSES = 11;
 export const SKILL_NAME = 'development-execution-accelerator';
+// 认证 runner 必须把固定模型身份同时写入调用参数与 manifest，避免证据与真实执行脱钩。
+const FIXED_CODEX_MODEL = 'gpt-5.6-terra';
+const FIXED_CODEX_MODEL_REASONING_EFFORT = 'high';
 
 const FORBIDDEN_PAIR_HINT = /skill|worker|parallel|serial/iu;
 const FORBIDDEN_SHORT_TOOLS = /spawn_agent|worker|background|write_stdin|wait_agent|wait_threads|update_plan|plan_state/iu;
@@ -255,11 +258,11 @@ export function buildCodexInvocation({
       '--color',
       'never',
       '--model',
-      'gpt-5.6-sol',
+      FIXED_CODEX_MODEL,
       '--sandbox',
       'workspace-write',
       '--config',
-      'model_reasoning_effort="high"',
+      `model_reasoning_effort="${FIXED_CODEX_MODEL_REASONING_EFFORT}"`,
       '--config',
       'sandbox_workspace_write.network_access=false',
       '--config',
@@ -541,6 +544,8 @@ export async function runLeanCampaign({
     codex: {
       version: verifiedLauncher.version,
       entry_sha256: await sha256File(verifiedLauncher.entryPath),
+      model: FIXED_CODEX_MODEL,
+      model_reasoning_effort: FIXED_CODEX_MODEL_REASONING_EFFORT,
     },
     fixture_sha256: fixtureIdentities,
     subjects: plan.map((subject) => ({ id: subject.id, prompt_sha256: digestText(subject.prompt) })),
