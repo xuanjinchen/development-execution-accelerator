@@ -1,4 +1,0 @@
-Evaluation: EVAL-002
-Status: pass
-Skill SHA-256 evaluated: `ded29f1c7a27a3285ba0fd26266867c2947e9dc5adfc61e88dca10f3e4d498ff`
-Observed: Summary reported missing facts without inventing implementation details.

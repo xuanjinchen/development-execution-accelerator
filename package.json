@@ -1,29 +1,17 @@
 {
   "name": "development-execution-accelerator",
-  "version": "0.1.0",
-  "description": "Accelerate already-decided long-running software-development implementation and verification. Use automatically for substantial multi-step coding, fixes, refactors, tests, migrations, builds, or configuration work with independent workstreams, long validation waits, or reusable verification; exclude short single-path changes, architecture, requirements, scope, planning, read-only review, and explicit serial/no-parallel requests.",
+  "version": "0.2.0",
+  "description": "Accelerate already-decided software-development implementation and verification by eliminating redundant work, selecting useful parallelism, reusing valid checks, and rerunning only invalidated validation while leaving upstream decisions unchanged.",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "init:skill": "node scripts/init-skill.js",
-    "recover:lock": "node scripts/recover-lock.js",
-    "test": "node --test tests/*.test.js",
-    "validate": "node scripts/validate.js",
-    "audit": "node scripts/audit.js",
-    "check": "npm test && npm run validate",
-    "eval:accelerator": "node scripts/evaluate-accelerator.js",
-    "eval:lean": "node scripts/run-lean-evaluation.js",
-    "gate:delivery": "node scripts/delivery-gate.js"
+    "test": "node --test tests/skill.test.js"
   },
   "files": [
     "SKILL.md"
   ],
-  "license": "Apache-2.0",
-  "scaffold": {
-    "mode": "initialized",
-    "version": "0.1.0"
-  }
+  "license": "Apache-2.0"
 }

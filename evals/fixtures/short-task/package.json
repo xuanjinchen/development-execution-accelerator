@@ -1,9 +1,0 @@
-{
-  "name": "accelerator-short-task-fixture",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test:value": "node --test test/value.test.js",
-    "test": "node --test test/value.test.js"
-  }
-}
